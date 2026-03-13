@@ -170,3 +170,24 @@ ul {
   color: var(--muted);
   margin-bottom: 0;
 }
+
+.session-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.session-list li {
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #0f141dcc;
+  color: var(--muted);
+}
+
+.session-list .meta {
+  color: var(--text);
+  font-size: 14px;
+}

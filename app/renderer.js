@@ -3,6 +3,7 @@ const statusText = document.getElementById("statusText");
 const modeSelect = document.getElementById("modeSelect");
 const startBtn = document.getElementById("startBtn");
 const stopBtn = document.getElementById("stopBtn");
+const recentSessions = document.getElementById("recentSessions");
 
 let mediaRecorder = null;
 let mediaStream = null;
@@ -11,6 +12,33 @@ let recordedChunks = [];
 function makeSuggestedFilename(startedAt) {
   const safeDate = new Date(startedAt).toISOString().replaceAll(":", "-");
   return `memora-session-${safeDate}.webm`;
+}
+
+function renderSessions(rows) {
+  if (!recentSessions) {
+    return;
+  }
+
+  if (!rows.length) {
+    recentSessions.innerHTML = "<li>No sessions yet. Start your first recording.</li>";
+    return;
+  }
+
+  recentSessions.innerHTML = rows
+    .map((row) => {
+      const started = new Date(row.started_at).toLocaleString();
+      const mode = row.mode;
+      const status = row.status;
+      const file = row.file_path ? `Saved: ${row.file_path}` : "No file saved yet";
+
+      return `<li><div class=\"meta\">${mode} • ${status} • ${started}</div><div>${file}</div></li>`;
+    })
+    .join("");
+}
+
+async function refreshSessions() {
+  const rows = await window.memora.listSessions();
+  renderSessions(rows);
 }
 
 function setRecordingUI(isRecording, mode) {
@@ -50,8 +78,12 @@ startBtn.addEventListener("click", async () => {
 
     recordedChunks = [];
 
+    const supportedMimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
+      ? "video/webm;codecs=vp9,opus"
+      : "video/webm";
+
     mediaRecorder = new MediaRecorder(mediaStream, {
-      mimeType: "video/webm;codecs=vp9,opus",
+      mimeType: supportedMimeType,
     });
 
     mediaRecorder.ondataavailable = (event) => {
@@ -106,13 +138,22 @@ stopBtn.addEventListener("click", async () => {
 
   if (saveResponse.ok) {
     statusText.textContent = `Saved recording at ${new Date(stopResponse.stoppedAt).toLocaleTimeString()} to ${saveResponse.filePath}.`;
+    await refreshSessions();
     return;
   }
 
   statusText.textContent = "Recording stopped. Save cancelled.";
+  await refreshSessions();
 });
 
 refreshState().catch((error) => {
   statusText.textContent = "Failed to load recording state.";
+  console.error(error);
+});
+
+refreshSessions().catch((error) => {
+  if (recentSessions) {
+    recentSessions.innerHTML = "<li>Could not load sessions.</li>";
+  }
   console.error(error);
 });
