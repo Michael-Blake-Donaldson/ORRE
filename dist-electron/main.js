@@ -149,6 +149,9 @@ ipcMain.handle("sessions:list", async () => {
     const rows = store.listSessions(20);
     return rows;
 });
+ipcMain.handle("sessions:listByCategory", async (_event, payload) => {
+    return store.listSessionsByCategory(payload.categoryId ?? null, payload.limit ?? 200);
+});
 ipcMain.handle("sessions:getDetail", async (_event, sessionId) => {
     return store.getSessionDetail(sessionId);
 });
@@ -158,6 +161,35 @@ ipcMain.handle("processing:rerun", async (_event, sessionId) => {
         return { ok: false, reason: "missing-file" };
     }
     processingQueue.enqueue({ sessionId, filePath: session.file_path });
+    return { ok: true };
+});
+ipcMain.handle("sessions:assignCategory", async (_event, payload) => {
+    try {
+        store.assignSessionCategory(payload.sessionId, payload.categoryId);
+        return { ok: true };
+    }
+    catch (error) {
+        return { ok: false, reason: error instanceof Error ? error.message : "assign-failed" };
+    }
+});
+ipcMain.handle("sessions:delete", async (_event, sessionId) => {
+    store.deleteSession(sessionId);
+    return { ok: true };
+});
+ipcMain.handle("categories:list", async () => {
+    return store.listCategories();
+});
+ipcMain.handle("categories:create", async (_event, name) => {
+    try {
+        const row = store.createCategory(name);
+        return { ok: true, category: row };
+    }
+    catch (error) {
+        return { ok: false, reason: error instanceof Error ? error.message : "create-category-failed" };
+    }
+});
+ipcMain.handle("categories:delete", async (_event, categoryId) => {
+    store.deleteCategory(categoryId);
     return { ok: true };
 });
 ipcMain.handle("search:content", async (_event, payload) => {

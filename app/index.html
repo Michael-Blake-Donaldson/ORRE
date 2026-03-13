@@ -13,7 +13,7 @@
         <div class="brand">Memora</div>
         <button class="nav-item nav-item--active" data-target="topAnchor">Dashboard</button>
         <button class="nav-item" data-target="recordPanel">Record</button>
-        <button class="nav-item" data-target="libraryPanel">Library</button>
+        <button class="nav-item" data-page="library">Library</button>
         <button class="nav-item" data-target="searchPanel">Search</button>
         <button class="nav-item" data-target="settingsPanel">Settings</button>
       </aside>
@@ -185,6 +185,26 @@
             </div>
             <p id="transcriptSearchStatus" class="status">No active transcript search.</p>
             <div id="sessionTranscript" class="summary-output transcript-output">No transcript generated yet.</div>
+
+            <div class="panel-header transcript-header">
+              <h3>Quick Organizer</h3>
+              <button id="deleteSessionBtn" class="button button--mini" disabled>Delete Session</button>
+            </div>
+            <div class="search-row search-row--transcript">
+              <input id="newCategoryInput" type="text" placeholder="Create a category (example: Sales Calls)" />
+              <div class="button-row button-row--compact">
+                <button id="addCategoryBtn" class="button button--mini">Add Category</button>
+                <button id="removeCategoryBtn" class="button button--mini">Delete Category</button>
+              </div>
+            </div>
+            <div class="field-row">
+              <label for="sessionCategorySelect">Assign Category to This Session</label>
+              <div class="source-row">
+                <select id="sessionCategorySelect"></select>
+                <button id="assignCategoryBtn" class="button button--mini">Assign</button>
+              </div>
+            </div>
+            <p id="categoryActionStatus" class="status">Create categories and assign them to organize recordings.</p>
           </article>
 
           <article id="settingsPanel" class="panel panel--wide">

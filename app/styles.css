@@ -446,6 +446,48 @@ ul {
   border-color: #2f9d79;
 }
 
+.library-toolbar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.library-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.session-card {
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  background: #0f141dcc;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.session-card__title {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.session-card__meta {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.session-card__row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.inline-select {
+  width: 100%;
+}
+
 .chip {
   display: inline-flex;
   align-items: center;
@@ -487,7 +529,10 @@ ul {
 
   .detail-grid,
   .grid,
-  .diagnostics-grid {
+  .diagnostics-grid,
+  .library-grid,
+  .library-toolbar,
+  .session-card__row {
     grid-template-columns: 1fr;
   }
 }

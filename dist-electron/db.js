@@ -22,6 +22,14 @@ export class MemoraStore {
         created_at TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS categories (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_categories_name ON categories(name);
+
       CREATE INDEX IF NOT EXISTS idx_sessions_started_at ON sessions(started_at DESC);
       CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
 
@@ -54,6 +62,7 @@ export class MemoraStore {
       CREATE INDEX IF NOT EXISTS idx_chunks_session_id ON extracted_chunks(session_id);
       CREATE INDEX IF NOT EXISTS idx_chunks_type ON extracted_chunks(chunk_type);
     `);
+        this.ensureSessionCategoryColumn();
         this.ftsEnabled = this.initializeFtsSafely();
         if (this.ftsEnabled) {
             // Backfill FTS rows when upgrading from previous schema versions.
@@ -77,6 +86,15 @@ export class MemoraStore {
         catch {
             return false;
         }
+    }
+    ensureSessionCategoryColumn() {
+        try {
+            this.db.exec(`ALTER TABLE sessions ADD COLUMN category_id TEXT;`);
+        }
+        catch {
+            // Column already exists on upgraded databases.
+        }
+        this.db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_category_id ON sessions(category_id);`);
     }
     createSession(input) {
         this.db
@@ -114,18 +132,96 @@ export class MemoraStore {
     }
     listSessions(limit = 20) {
         return this.db
-            .prepare(`SELECT id, mode, started_at, stopped_at, file_path, status, created_at
-         FROM sessions
+            .prepare(`SELECT s.id, s.mode, s.started_at, s.stopped_at, s.file_path, s.status, s.category_id, c.name AS category_name, s.created_at
+         FROM sessions s
+         LEFT JOIN categories c ON c.id = s.category_id
          ORDER BY started_at DESC
          LIMIT ?`)
             .all(limit);
     }
     getSessionById(id) {
         return (this.db
-            .prepare(`SELECT id, mode, started_at, stopped_at, file_path, status, created_at
-           FROM sessions
-           WHERE id = ?`)
+            .prepare(`SELECT s.id, s.mode, s.started_at, s.stopped_at, s.file_path, s.status, s.category_id, c.name AS category_name, s.created_at
+           FROM sessions s
+           LEFT JOIN categories c ON c.id = s.category_id
+           WHERE s.id = ?`)
             .get(id) ?? null);
+    }
+    listCategories() {
+        return this.db
+            .prepare(`SELECT id, name, created_at
+         FROM categories
+         ORDER BY LOWER(name) ASC`)
+            .all();
+    }
+    createCategory(name) {
+        const normalized = name.trim().slice(0, 64);
+        if (!normalized) {
+            throw new Error("Category name is required.");
+        }
+        const existing = this.db
+            .prepare(`SELECT id, name, created_at FROM categories WHERE LOWER(name) = LOWER(?)`)
+            .get(normalized);
+        if (existing) {
+            return existing;
+        }
+        const row = {
+            id: crypto.randomUUID(),
+            name: normalized,
+            created_at: new Date().toISOString(),
+        };
+        this.db
+            .prepare(`INSERT INTO categories (id, name, created_at) VALUES (@id, @name, @created_at)`)
+            .run(row);
+        return row;
+    }
+    deleteCategory(categoryId) {
+        const tx = this.db.transaction(() => {
+            this.db.prepare(`UPDATE sessions SET category_id = NULL WHERE category_id = ?`).run(categoryId);
+            this.db.prepare(`DELETE FROM categories WHERE id = ?`).run(categoryId);
+        });
+        tx();
+    }
+    assignSessionCategory(sessionId, categoryId) {
+        if (categoryId) {
+            const categoryExists = this.db.prepare(`SELECT id FROM categories WHERE id = ?`).get(categoryId);
+            if (!categoryExists) {
+                throw new Error("Category not found.");
+            }
+        }
+        this.db
+            .prepare(`UPDATE sessions SET category_id = @category_id WHERE id = @id`)
+            .run({ id: sessionId, category_id: categoryId });
+    }
+    deleteSession(sessionId) {
+        const tx = this.db.transaction(() => {
+            this.db.prepare(`DELETE FROM extracted_chunks WHERE session_id = ?`).run(sessionId);
+            if (this.ftsEnabled) {
+                this.db.prepare(`DELETE FROM extracted_chunks_fts WHERE session_id = ?`).run(sessionId);
+            }
+            this.db.prepare(`DELETE FROM processing_jobs WHERE session_id = ?`).run(sessionId);
+            this.db.prepare(`DELETE FROM sessions WHERE id = ?`).run(sessionId);
+        });
+        tx();
+    }
+    listSessionsByCategory(categoryId, limit = 200) {
+        if (!categoryId) {
+            return this.db
+                .prepare(`SELECT s.id, s.mode, s.started_at, s.stopped_at, s.file_path, s.status, s.category_id, c.name AS category_name, s.created_at
+           FROM sessions s
+           LEFT JOIN categories c ON c.id = s.category_id
+           ORDER BY s.started_at DESC
+           LIMIT ?`)
+                .all(limit);
+        }
+        return this.db
+            .prepare(`SELECT s.id, s.mode, s.started_at, s.stopped_at, s.file_path, s.status, s.category_id, c.name AS category_name, s.created_at
+         FROM sessions s
+         LEFT JOIN categories c ON c.id = s.category_id
+         WHERE s.category_id = ?
+         ORDER BY s.started_at DESC
+         LIMIT ?`)
+            .all(categoryId, limit);
     }
     queueProcessingJobs(sessionId) {
         const createdAt = new Date().toISOString();

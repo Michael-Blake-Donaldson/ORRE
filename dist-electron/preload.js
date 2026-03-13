@@ -15,11 +15,29 @@ const api = {
     listSessions: async () => {
         return ipcRenderer.invoke("sessions:list");
     },
+    listSessionsByCategory: async (categoryId, limit = 200) => {
+        return ipcRenderer.invoke("sessions:listByCategory", { categoryId, limit });
+    },
     getSessionDetail: async (sessionId) => {
         return ipcRenderer.invoke("sessions:getDetail", sessionId);
     },
     rerunProcessing: async (sessionId) => {
         return ipcRenderer.invoke("processing:rerun", sessionId);
+    },
+    assignSessionCategory: async (sessionId, categoryId) => {
+        return ipcRenderer.invoke("sessions:assignCategory", { sessionId, categoryId });
+    },
+    deleteSession: async (sessionId) => {
+        return ipcRenderer.invoke("sessions:delete", sessionId);
+    },
+    listCategories: async () => {
+        return ipcRenderer.invoke("categories:list");
+    },
+    createCategory: async (name) => {
+        return ipcRenderer.invoke("categories:create", name);
+    },
+    deleteCategory: async (categoryId) => {
+        return ipcRenderer.invoke("categories:delete", categoryId);
     },
     searchContent: async (query, limit = 25) => {
         return ipcRenderer.invoke("search:content", { query, limit });

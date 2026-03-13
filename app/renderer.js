@@ -29,6 +29,13 @@ const transcriptPrevBtn = document.getElementById("transcriptPrevBtn");
 const transcriptNextBtn = document.getElementById("transcriptNextBtn");
 const transcriptClearBtn = document.getElementById("transcriptClearBtn");
 const transcriptSearchStatus = document.getElementById("transcriptSearchStatus");
+const newCategoryInput = document.getElementById("newCategoryInput");
+const addCategoryBtn = document.getElementById("addCategoryBtn");
+const removeCategoryBtn = document.getElementById("removeCategoryBtn");
+const sessionCategorySelect = document.getElementById("sessionCategorySelect");
+const assignCategoryBtn = document.getElementById("assignCategoryBtn");
+const deleteSessionBtn = document.getElementById("deleteSessionBtn");
+const categoryActionStatus = document.getElementById("categoryActionStatus");
 const sessionDetailTitle = document.getElementById("sessionDetailTitle");
 const sessionDetailSubtitle = document.getElementById("sessionDetailSubtitle");
 const processingJobs = document.getElementById("processingJobs");
@@ -74,6 +81,12 @@ function refreshDiagnosticsUI() {
 function setupNavigation() {
   navButtons.forEach((button) => {
     button.addEventListener("click", () => {
+      const pageTarget = button.getAttribute("data-page");
+      if (pageTarget === "library") {
+        window.location.href = "./library.html";
+        return;
+      }
+
       const targetId = button.getAttribute("data-target");
       const target = targetId ? document.getElementById(targetId) : null;
 
@@ -85,6 +98,38 @@ function setupNavigation() {
       }
     });
   });
+}
+
+function setCategoryStatus(text) {
+  if (categoryActionStatus) {
+    categoryActionStatus.textContent = text;
+  }
+}
+
+function renderCategorySelectOptions(selectedCategoryId = null) {
+  if (!sessionCategorySelect) {
+    return;
+  }
+
+  const options = [
+    `<option value="">Uncategorized</option>`,
+    ...categoriesCache.map((category) => {
+      const selected = selectedCategoryId === category.id ? "selected" : "";
+      return `<option value="${category.id}" ${selected}>${category.name}</option>`;
+    }),
+  ];
+
+  sessionCategorySelect.innerHTML = options.join("");
+}
+
+async function refreshCategories(selectedCategoryId = null) {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
+  categoriesCache = await api.listCategories();
+  renderCategorySelectOptions(selectedCategoryId);
 }
 
 function getMemoraApi() {
@@ -131,6 +176,7 @@ let transcriptMatchIndexes = [];
 let transcriptMatchCursor = -1;
 let activeTranscriptSourceFilter = "all";
 let replaySourceSessionId = null;
+let categoriesCache = [];
 
 const permissionState = {
   screen: localStorage.getItem("memora-permission-screen") === "granted" ? "granted" : "unknown",
@@ -687,6 +733,14 @@ function renderSessionDetail(detail) {
     if (replayBtn) {
       replayBtn.disabled = true;
     }
+    if (assignCategoryBtn) {
+      assignCategoryBtn.disabled = true;
+    }
+    if (deleteSessionBtn) {
+      deleteSessionBtn.disabled = true;
+    }
+    renderCategorySelectOptions(null);
+    setCategoryStatus("Select a session to assign categories or delete recording metadata.");
     if (replayStatus) {
       replayStatus.textContent = "Replay not available for this session.";
     }
@@ -707,6 +761,18 @@ function renderSessionDetail(detail) {
   if (replayBtn) {
     replayBtn.disabled = !detail.session.file_path;
   }
+  if (assignCategoryBtn) {
+    assignCategoryBtn.disabled = false;
+  }
+  if (deleteSessionBtn) {
+    deleteSessionBtn.disabled = false;
+  }
+  renderCategorySelectOptions(detail.session.category_id ?? null);
+  setCategoryStatus(
+    detail.session.category_name
+      ? `Current category: ${detail.session.category_name}`
+      : "Current category: Uncategorized",
+  );
 
   if (replayStatus) {
     replayStatus.textContent = detail.session.file_path
@@ -1146,6 +1212,112 @@ transcriptFilterVisualBtn?.addEventListener("click", () => {
   }
 });
 
+addCategoryBtn?.addEventListener("click", async () => {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
+  const name = (newCategoryInput?.value ?? "").trim();
+  if (!name) {
+    setCategoryStatus("Enter a category name first.");
+    return;
+  }
+
+  const response = await api.createCategory(name);
+  if (!response.ok) {
+    setCategoryStatus(`Could not create category: ${response.reason}`);
+    return;
+  }
+
+  if (newCategoryInput) {
+    newCategoryInput.value = "";
+  }
+
+  await refreshCategories(response.category.id);
+  setCategoryStatus(`Category added: ${response.category.name}`);
+});
+
+removeCategoryBtn?.addEventListener("click", async () => {
+  const api = getMemoraApi();
+  if (!api || !sessionCategorySelect) {
+    return;
+  }
+
+  const selectedCategoryId = sessionCategorySelect.value;
+  if (!selectedCategoryId) {
+    setCategoryStatus("Choose a named category to delete.");
+    return;
+  }
+
+  const confirmed = window.confirm("Delete this category? Sessions in it will become Uncategorized.");
+  if (!confirmed) {
+    return;
+  }
+
+  const result = await api.deleteCategory(selectedCategoryId);
+  if (!result.ok) {
+    setCategoryStatus("Could not delete category.");
+    return;
+  }
+
+  await refreshCategories(null);
+  await refreshSessions();
+  await refreshSelectedSessionDetail();
+  setCategoryStatus("Category deleted.");
+});
+
+assignCategoryBtn?.addEventListener("click", async () => {
+  const api = getMemoraApi();
+  if (!api || !selectedSessionId || !sessionCategorySelect) {
+    setCategoryStatus("Select a session first.");
+    return;
+  }
+
+  const categoryId = sessionCategorySelect.value || null;
+  const result = await api.assignSessionCategory(selectedSessionId, categoryId);
+  if (!result.ok) {
+    setCategoryStatus("Could not assign category to this session.");
+    return;
+  }
+
+  await refreshSessions();
+  await refreshSelectedSessionDetail();
+  setCategoryStatus("Session category updated.");
+});
+
+deleteSessionBtn?.addEventListener("click", async () => {
+  const api = getMemoraApi();
+  if (!api || !selectedSessionId) {
+    setCategoryStatus("Select a session first.");
+    return;
+  }
+
+  const confirmed = window.confirm("Delete this session and its extracted memory data? This cannot be undone.");
+  if (!confirmed) {
+    return;
+  }
+
+  const deletingSessionId = selectedSessionId;
+  const result = await api.deleteSession(deletingSessionId);
+  if (!result.ok) {
+    setCategoryStatus("Could not delete this session.");
+    return;
+  }
+
+  selectedSessionId = null;
+
+  if (replayPlayer) {
+    replayPlayer.pause();
+    replayPlayer.removeAttribute("src");
+    replayPlayer.load();
+  }
+
+  await refreshSessions();
+  await refreshSelectedSessionDetail();
+  setCategoryStatus("Session deleted.");
+});
+
 replayBtn?.addEventListener("click", async () => {
   const api = getMemoraApi();
   if (!api) {
@@ -1261,6 +1433,18 @@ refreshDiagnosticsUI();
 setupNavigation();
 setActiveChunkFilter("all");
 setActiveTranscriptSourceFilter("all");
+renderCategorySelectOptions(null);
+setCategoryStatus("Create categories and assign them to organize recordings.");
+if (assignCategoryBtn) {
+  assignCategoryBtn.disabled = true;
+}
+if (deleteSessionBtn) {
+  deleteSessionBtn.disabled = true;
+}
+refreshCategories().catch((error) => {
+  setCategoryStatus("Could not load categories.");
+  console.error(error);
+});
 refreshDisplaySources().catch((error) => {
   statusText.textContent = "Could not load capture sources.";
   diagnostics.lastCaptureError = error?.name ?? "source-list-failed";

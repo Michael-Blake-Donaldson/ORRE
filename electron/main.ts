@@ -189,6 +189,10 @@ ipcMain.handle("sessions:list", async () => {
   return rows;
 });
 
+ipcMain.handle("sessions:listByCategory", async (_event, payload: { categoryId: string | null; limit?: number }) => {
+  return store.listSessionsByCategory(payload.categoryId ?? null, payload.limit ?? 200);
+});
+
 ipcMain.handle("sessions:getDetail", async (_event, sessionId: string) => {
   return store.getSessionDetail(sessionId);
 });
@@ -201,6 +205,38 @@ ipcMain.handle("processing:rerun", async (_event, sessionId: string) => {
   }
 
   processingQueue.enqueue({ sessionId, filePath: session.file_path });
+  return { ok: true };
+});
+
+ipcMain.handle("sessions:assignCategory", async (_event, payload: { sessionId: string; categoryId: string | null }) => {
+  try {
+    store.assignSessionCategory(payload.sessionId, payload.categoryId);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, reason: error instanceof Error ? error.message : "assign-failed" };
+  }
+});
+
+ipcMain.handle("sessions:delete", async (_event, sessionId: string) => {
+  store.deleteSession(sessionId);
+  return { ok: true };
+});
+
+ipcMain.handle("categories:list", async () => {
+  return store.listCategories();
+});
+
+ipcMain.handle("categories:create", async (_event, name: string) => {
+  try {
+    const row = store.createCategory(name);
+    return { ok: true, category: row };
+  } catch (error) {
+    return { ok: false, reason: error instanceof Error ? error.message : "create-category-failed" };
+  }
+});
+
+ipcMain.handle("categories:delete", async (_event, categoryId: string) => {
+  store.deleteCategory(categoryId);
   return { ok: true };
 });
 

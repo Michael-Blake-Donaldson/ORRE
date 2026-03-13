@@ -9,6 +9,14 @@ type SessionRow = {
   stopped_at: string | null;
   file_path: string | null;
   status: "recording" | "stopped" | "saved" | "discarded";
+  category_id?: string | null;
+  category_name?: string | null;
+  created_at: string;
+};
+
+type CategoryRow = {
+  id: string;
+  name: string;
   created_at: string;
 };
 
@@ -88,11 +96,32 @@ const api = {
   listSessions: async () => {
     return ipcRenderer.invoke("sessions:list") as Promise<SessionRow[]>;
   },
+  listSessionsByCategory: async (categoryId: string | null, limit = 200) => {
+    return ipcRenderer.invoke("sessions:listByCategory", { categoryId, limit }) as Promise<SessionRow[]>;
+  },
   getSessionDetail: async (sessionId: string) => {
     return ipcRenderer.invoke("sessions:getDetail", sessionId) as Promise<SessionDetail>;
   },
   rerunProcessing: async (sessionId: string) => {
     return ipcRenderer.invoke("processing:rerun", sessionId) as Promise<{ ok: boolean; reason?: string }>;
+  },
+  assignSessionCategory: async (sessionId: string, categoryId: string | null) => {
+    return ipcRenderer.invoke("sessions:assignCategory", { sessionId, categoryId }) as Promise<{ ok: boolean; reason?: string }>;
+  },
+  deleteSession: async (sessionId: string) => {
+    return ipcRenderer.invoke("sessions:delete", sessionId) as Promise<{ ok: boolean; reason?: string }>;
+  },
+  listCategories: async () => {
+    return ipcRenderer.invoke("categories:list") as Promise<CategoryRow[]>;
+  },
+  createCategory: async (name: string) => {
+    return ipcRenderer.invoke("categories:create", name) as Promise<
+      | { ok: true; category: CategoryRow }
+      | { ok: false; reason: string }
+    >;
+  },
+  deleteCategory: async (categoryId: string) => {
+    return ipcRenderer.invoke("categories:delete", categoryId) as Promise<{ ok: boolean; reason?: string }>;
   },
   searchContent: async (query: string, limit = 25) => {
     return ipcRenderer.invoke("search:content", { query, limit }) as Promise<SearchResultRow[]>;
