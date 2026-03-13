@@ -20,7 +20,14 @@ const api = {
     return ipcRenderer.invoke("recording:stop") as Promise<{
       ok: boolean;
       stoppedAt: string;
+      startedAt: string | null;
     }>;
+  },
+  saveRecording: async (bytes: number[], suggestedName: string) => {
+    return ipcRenderer.invoke("recording:save", { bytes, suggestedName }) as Promise<
+      | { ok: true; filePath: string }
+      | { ok: false; reason: string }
+    >;
   },
 };
 
