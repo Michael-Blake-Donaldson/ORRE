@@ -78,6 +78,12 @@ body {
   color: var(--muted);
 }
 
+.recording-stack {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
 .badge {
   border-radius: 999px;
   padding: 8px 12px;
@@ -94,6 +100,66 @@ body {
   color: #04150f;
   background: var(--accent);
   border-color: var(--accent);
+}
+
+.recording-signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.recording-signal--idle {
+  color: var(--muted);
+}
+
+.recording-signal--pending {
+  color: #ffdca8;
+  border-color: #f0b45a;
+}
+
+.recording-signal--recording {
+  color: #7df3cf;
+  border-color: #2bbf90;
+}
+
+.recording-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #5e738e;
+}
+
+.recording-signal--recording .recording-dot {
+  background: #2bbf90;
+  box-shadow: 0 0 0 0 rgba(43, 191, 144, 0.8);
+  animation: pulse 1.4s infinite;
+}
+
+.recording-signal--pending .recording-dot {
+  background: #f0b45a;
+}
+
+.recording-timer {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(43, 191, 144, 0.7);
+  }
+
+  70% {
+    box-shadow: 0 0 0 8px rgba(43, 191, 144, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(43, 191, 144, 0);
+  }
 }
 
 .grid {

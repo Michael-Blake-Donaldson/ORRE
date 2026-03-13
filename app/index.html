@@ -23,7 +23,14 @@
             <h1>Phase 1: Product Foundation</h1>
             <p>Windows-first desktop shell with privacy-safe recording controls.</p>
           </div>
-          <div id="recordingBadge" class="badge badge--idle">Not Recording</div>
+          <div class="recording-stack">
+            <div id="recordingBadge" class="badge badge--idle">Not Recording</div>
+            <div id="recordingSignal" class="recording-signal recording-signal--idle">
+              <span class="recording-dot" aria-hidden="true"></span>
+              <span id="recordingSignalText">Idle</span>
+              <span id="recordingTimer" class="recording-timer">00:00</span>
+            </div>
+          </div>
         </header>
 
         <section class="grid">
@@ -45,7 +52,7 @@
               <button id="stopBtn" class="button" disabled>Stop</button>
             </div>
 
-            <p id="statusText" class="status">Ready. Recording is off by default.</p>
+            <p id="statusText" class="status" aria-live="polite">Ready. Recording is off by default.</p>
           </article>
 
           <article class="panel">

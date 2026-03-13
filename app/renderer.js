@@ -1,4 +1,7 @@
 const recordingBadge = document.getElementById("recordingBadge");
+const recordingSignal = document.getElementById("recordingSignal");
+const recordingSignalText = document.getElementById("recordingSignalText");
+const recordingTimer = document.getElementById("recordingTimer");
 const statusText = document.getElementById("statusText");
 const modeSelect = document.getElementById("modeSelect");
 const startBtn = document.getElementById("startBtn");
@@ -22,6 +25,8 @@ let mediaStream = null;
 let recordedChunks = [];
 let selectedSessionId = null;
 let detailPollInterval = null;
+let recordingStartedMs = null;
+let recordingTimerInterval = null;
 
 const permissionState = {
   screen: localStorage.getItem("memora-permission-screen") === "granted" ? "granted" : "unknown",
@@ -101,6 +106,52 @@ async function requestMicPermission() {
 function makeSuggestedFilename(startedAt) {
   const safeDate = new Date(startedAt).toISOString().replaceAll(":", "-");
   return `memora-session-${safeDate}.webm`;
+}
+
+function formatElapsed(ms) {
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60)
+    .toString()
+    .padStart(2, "0");
+  const seconds = (totalSeconds % 60).toString().padStart(2, "0");
+  return `${minutes}:${seconds}`;
+}
+
+function setRecordingSignal(state, text) {
+  if (!recordingSignal || !recordingSignalText) {
+    return;
+  }
+
+  recordingSignal.classList.remove("recording-signal--idle", "recording-signal--pending", "recording-signal--recording");
+  recordingSignal.classList.add(`recording-signal--${state}`);
+  recordingSignalText.textContent = text;
+}
+
+function stopRecordingTimer() {
+  if (recordingTimerInterval) {
+    clearInterval(recordingTimerInterval);
+    recordingTimerInterval = null;
+  }
+
+  recordingStartedMs = null;
+  if (recordingTimer) {
+    recordingTimer.textContent = "00:00";
+  }
+}
+
+function startRecordingTimer() {
+  stopRecordingTimer();
+  recordingStartedMs = Date.now();
+
+  const tick = () => {
+    if (!recordingTimer || !recordingStartedMs) {
+      return;
+    }
+    recordingTimer.textContent = formatElapsed(Date.now() - recordingStartedMs);
+  };
+
+  tick();
+  recordingTimerInterval = setInterval(tick, 1000);
 }
 
 function stopDetailPolling() {
@@ -285,10 +336,14 @@ function setRecordingUI(isRecording, mode) {
     recordingBadge.textContent = `Recording: ${mode}`;
     recordingBadge.classList.add("badge--recording");
     recordingBadge.classList.remove("badge--idle");
+    setRecordingSignal("recording", "Recording Live");
+    startRecordingTimer();
   } else {
     recordingBadge.textContent = "Not Recording";
     recordingBadge.classList.add("badge--idle");
     recordingBadge.classList.remove("badge--recording");
+    setRecordingSignal("idle", "Idle");
+    stopRecordingTimer();
   }
 
   startBtn.disabled = isRecording;
@@ -302,6 +357,10 @@ async function refreshState() {
 
 startBtn.addEventListener("click", async () => {
   const mode = modeSelect.value;
+  startBtn.disabled = true;
+  stopBtn.disabled = true;
+  setRecordingSignal("pending", "Waiting for permission");
+  statusText.textContent = "Select a screen/window in the prompt to start recording.";
 
   try {
     mediaStream = await navigator.mediaDevices.getDisplayMedia({
@@ -330,12 +389,25 @@ startBtn.addEventListener("click", async () => {
       }
     };
 
+    mediaStream.getVideoTracks().forEach((track) => {
+      track.addEventListener("ended", async () => {
+        // If user stops sharing from OS controls, reflect it in the app immediately.
+        if (mediaRecorder && mediaRecorder.state === "recording") {
+          statusText.textContent = "Screen sharing ended from system controls. Finalizing recording.";
+          await stopRecordingFlow();
+        }
+      });
+    });
+
     mediaRecorder.start(1000);
   } catch (error) {
     permissionState.screen = error?.name === "NotAllowedError" ? "denied" : "unknown";
     persistPermissionState("screen", permissionState.screen);
     refreshPermissionUI();
     statusText.textContent = "Screen permission denied or capture cancelled. Recording did not start.";
+    setRecordingSignal("idle", "Idle");
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
     console.error(error);
     return;
   }
@@ -348,11 +420,15 @@ startBtn.addEventListener("click", async () => {
   await selectSession(response.sessionId);
 });
 
-stopBtn.addEventListener("click", async () => {
+async function stopRecordingFlow() {
   if (!mediaRecorder) {
     statusText.textContent = "No active recorder found.";
     return;
   }
+
+  stopBtn.disabled = true;
+  setRecordingSignal("pending", "Finalizing recording");
+  statusText.textContent = "Finalizing recording...";
 
   const finalizedBlob = await new Promise((resolve) => {
     mediaRecorder.onstop = async () => {
@@ -398,6 +474,10 @@ stopBtn.addEventListener("click", async () => {
   statusText.textContent = "Recording stopped. Save cancelled.";
   await refreshSessions();
   await selectSession(stopResponse.sessionId);
+}
+
+stopBtn.addEventListener("click", async () => {
+  await stopRecordingFlow();
 });
 
 grantScreenBtn.addEventListener("click", async () => {
