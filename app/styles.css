@@ -203,7 +203,6 @@ ul {
   padding: 10px 12px;
   background: #0f141dcc;
   color: var(--muted);
-  cursor: pointer;
 }
 
 .session-list .meta {
@@ -211,7 +210,11 @@ ul {
   font-size: 14px;
 }
 
-.session-list li.active {
+.session-list--selectable li {
+  cursor: pointer;
+}
+
+.session-list--selectable li.active {
   border-color: #2f9d79;
 }
 
