@@ -1,5 +1,5 @@
 import { app, BrowserWindow, desktopCapturer, ipcMain, session } from "electron";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 import { promises as fs } from "node:fs";
 import { dialog } from "electron";
@@ -212,6 +212,25 @@ ipcMain.handle("sessions:generateSummary", async (_event, sessionId: string) => 
   const detail = store.getSessionDetail(sessionId);
   const summary = buildSessionSummary(detail.chunks);
   return summary;
+});
+
+ipcMain.handle("sessions:getReplaySource", async (_event, sessionId: string) => {
+  const sessionRow = store.getSessionById(sessionId);
+
+  if (!sessionRow?.file_path) {
+    return { ok: false, reason: "missing-file" };
+  }
+
+  try {
+    await fs.access(sessionRow.file_path);
+  } catch {
+    return { ok: false, reason: "file-not-found" };
+  }
+
+  return {
+    ok: true,
+    fileUrl: pathToFileURL(sessionRow.file_path).toString(),
+  };
 });
 
 ipcMain.handle("ui:listDisplaySources", async () => {

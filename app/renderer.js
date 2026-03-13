@@ -11,6 +11,9 @@ const stopBtn = document.getElementById("stopBtn");
 const recentSessions = document.getElementById("recentSessions");
 const rerunBtn = document.getElementById("rerunBtn");
 const generateSummaryBtn = document.getElementById("generateSummaryBtn");
+const replayBtn = document.getElementById("replayBtn");
+const replayStatus = document.getElementById("replayStatus");
+const replayPlayer = document.getElementById("replayPlayer");
 const sessionSummary = document.getElementById("sessionSummary");
 const filterAllBtn = document.getElementById("filterAllBtn");
 const filterOcrBtn = document.getElementById("filterOcrBtn");
@@ -127,6 +130,7 @@ let currentTranscriptSegments = [];
 let transcriptMatchIndexes = [];
 let transcriptMatchCursor = -1;
 let activeTranscriptSourceFilter = "all";
+let replaySourceSessionId = null;
 
 const permissionState = {
   screen: localStorage.getItem("memora-permission-screen") === "granted" ? "granted" : "unknown",
@@ -680,6 +684,18 @@ function renderSessionDetail(detail) {
     transcriptMatchCursor = -1;
     setTranscriptSearchStatus("No active transcript search.");
     rerunBtn.disabled = true;
+    if (replayBtn) {
+      replayBtn.disabled = true;
+    }
+    if (replayStatus) {
+      replayStatus.textContent = "Replay not available for this session.";
+    }
+    if (replayPlayer) {
+      replayPlayer.pause();
+      replayPlayer.removeAttribute("src");
+      replayPlayer.load();
+    }
+    replaySourceSessionId = null;
     stopDetailPolling();
     return;
   }
@@ -688,6 +704,23 @@ function renderSessionDetail(detail) {
   sessionDetailTitle.textContent = `Session ${detail.session.id.slice(0, 8)}`;
   sessionDetailSubtitle.textContent = `${detail.session.mode} started ${started}`;
   rerunBtn.disabled = !detail.session.file_path;
+  if (replayBtn) {
+    replayBtn.disabled = !detail.session.file_path;
+  }
+
+  if (replayStatus) {
+    replayStatus.textContent = detail.session.file_path
+      ? replaySourceSessionId === detail.session.id
+        ? "Replay loaded. Use video controls to pause/seek/fullscreen."
+        : "Replay ready. Click Play Replay to load this session video."
+      : "No saved recording file for this session yet.";
+  }
+
+  if (replaySourceSessionId !== detail.session.id && replayPlayer) {
+    replayPlayer.pause();
+    replayPlayer.removeAttribute("src");
+    replayPlayer.load();
+  }
 
   if (!detail.jobs.length) {
     processingJobs.innerHTML = "<li>No processing jobs yet. Save a recording to enqueue processing.</li>";
@@ -1113,6 +1146,61 @@ transcriptFilterVisualBtn?.addEventListener("click", () => {
   }
 });
 
+replayBtn?.addEventListener("click", async () => {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
+  if (!selectedSessionId) {
+    statusText.textContent = "Select a session first to replay its recording.";
+    return;
+  }
+
+  replayBtn.disabled = true;
+  if (replayStatus) {
+    replayStatus.textContent = "Loading replay video...";
+  }
+
+  try {
+    const replaySource = await api.getSessionReplaySource(selectedSessionId);
+
+    if (!replaySource.ok) {
+      if (replayStatus) {
+        replayStatus.textContent = "Replay file is unavailable for this session.";
+      }
+      statusText.textContent = "Could not load replay for this session.";
+      return;
+    }
+
+    if (!replayPlayer) {
+      return;
+    }
+
+    replayPlayer.src = replaySource.fileUrl;
+    replayPlayer.currentTime = 0;
+    replaySourceSessionId = selectedSessionId;
+
+    await replayPlayer.play();
+
+    if (replayStatus) {
+      replayStatus.textContent = "Replay loaded. Use video controls to pause/seek/fullscreen.";
+    }
+    statusText.textContent = "Replay started.";
+  } catch (error) {
+    if (replayStatus) {
+      replayStatus.textContent = "Replay failed to load. Verify the saved file still exists.";
+    }
+    statusText.textContent = "Replay playback failed.";
+    diagnostics.lastCaptureError = error?.name ?? "replay-load-failed";
+    refreshDiagnosticsUI();
+  } finally {
+    if (replayBtn && currentSessionDetail?.session?.file_path) {
+      replayBtn.disabled = false;
+    }
+  }
+});
+
 generateSummaryBtn.addEventListener("click", async () => {
   const api = getMemoraApi();
   if (!api) {
@@ -1186,6 +1274,12 @@ if (searchResults) {
 
 window.addEventListener("beforeunload", () => {
   stopDetailPolling();
+
+  if (replayPlayer) {
+    replayPlayer.pause();
+    replayPlayer.removeAttribute("src");
+    replayPlayer.load();
+  }
 
   if (pendingPickerHintTimeout) {
     clearTimeout(pendingPickerHintTimeout);

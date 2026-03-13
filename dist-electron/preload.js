@@ -27,6 +27,9 @@ const api = {
     generateSessionSummary: async (sessionId) => {
         return ipcRenderer.invoke("sessions:generateSummary", sessionId);
     },
+    getSessionReplaySource: async (sessionId) => {
+        return ipcRenderer.invoke("sessions:getReplaySource", sessionId);
+    },
     prepareDisplayPicker: async () => {
         return ipcRenderer.invoke("ui:prepareDisplayPicker");
     },

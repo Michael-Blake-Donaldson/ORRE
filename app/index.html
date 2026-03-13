@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self';" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob: file: data:; connect-src 'self';" />
     <title>Memora</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
@@ -137,8 +137,14 @@
 
             <div class="button-row">
               <button id="generateSummaryBtn" class="button">Generate Session Summary</button>
+              <button id="replayBtn" class="button" disabled>Play Replay</button>
             </div>
             <div id="sessionSummary" class="summary-output">No summary generated yet.</div>
+
+            <div class="replay-shell">
+              <p id="replayStatus" class="status">Replay not loaded. Select a saved session and click Play Replay.</p>
+              <video id="replayPlayer" class="replay-player" controls preload="metadata"></video>
+            </div>
 
             <div class="detail-grid">
               <div>

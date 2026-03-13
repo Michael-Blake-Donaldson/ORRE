@@ -104,6 +104,12 @@ const api = {
       actionItems: string[];
     }>;
   },
+  getSessionReplaySource: async (sessionId: string) => {
+    return ipcRenderer.invoke("sessions:getReplaySource", sessionId) as Promise<
+      | { ok: true; fileUrl: string }
+      | { ok: false; reason: string }
+    >;
+  },
   prepareDisplayPicker: async () => {
     return ipcRenderer.invoke("ui:prepareDisplayPicker") as Promise<void>;
   },

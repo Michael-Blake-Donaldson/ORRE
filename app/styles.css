@@ -318,6 +318,24 @@ select {
   white-space: pre-wrap;
 }
 
+.replay-shell {
+  margin-top: 12px;
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  background: #0d131d;
+  padding: 10px;
+}
+
+.replay-player {
+  width: min(540px, 100%);
+  aspect-ratio: 16 / 9;
+  border-radius: 10px;
+  background: #05070b;
+  border: 1px solid #2b3544;
+  display: block;
+  margin-top: 8px;
+}
+
 .transcript-header {
   margin-top: 16px;
 }
