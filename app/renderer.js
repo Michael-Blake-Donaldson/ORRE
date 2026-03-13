@@ -4,6 +4,8 @@ const recordingSignalText = document.getElementById("recordingSignalText");
 const recordingTimer = document.getElementById("recordingTimer");
 const statusText = document.getElementById("statusText");
 const modeSelect = document.getElementById("modeSelect");
+const sourceSelect = document.getElementById("sourceSelect");
+const refreshSourcesBtn = document.getElementById("refreshSourcesBtn");
 const startBtn = document.getElementById("startBtn");
 const stopBtn = document.getElementById("stopBtn");
 const recentSessions = document.getElementById("recentSessions");
@@ -27,6 +29,7 @@ let selectedSessionId = null;
 let detailPollInterval = null;
 let recordingStartedMs = null;
 let recordingTimerInterval = null;
+let selectedDisplaySourceId = null;
 
 const permissionState = {
   screen: localStorage.getItem("memora-permission-screen") === "granted" ? "granted" : "unknown",
@@ -71,6 +74,40 @@ function setPermissionStatus(element, state) {
 function refreshPermissionUI() {
   setPermissionStatus(screenPermissionStatus, permissionState.screen);
   setPermissionStatus(micPermissionStatus, permissionState.mic);
+}
+
+async function refreshDisplaySources() {
+  if (!sourceSelect) {
+    return;
+  }
+
+  const sources = await window.memora.listDisplaySources();
+
+  if (!sources.length) {
+    sourceSelect.innerHTML = "<option value=\"\">No screen/window sources found</option>";
+    sourceSelect.disabled = true;
+    selectedDisplaySourceId = null;
+    await window.memora.setPreferredDisplaySource(null);
+    return;
+  }
+
+  sourceSelect.disabled = false;
+  sourceSelect.innerHTML = sources
+    .map((source) => {
+      const prefix = source.type === "screen" ? "Screen" : "Window";
+      return `<option value="${source.id}">${prefix}: ${source.name}</option>`;
+    })
+    .join("");
+
+  const fallbackSourceId = sources[0].id;
+  const resolvedSourceId =
+    selectedDisplaySourceId && sources.some((source) => source.id === selectedDisplaySourceId)
+      ? selectedDisplaySourceId
+      : fallbackSourceId;
+
+  sourceSelect.value = resolvedSourceId;
+  selectedDisplaySourceId = resolvedSourceId;
+  await window.memora.setPreferredDisplaySource(resolvedSourceId);
 }
 
 async function requestScreenPermission() {
@@ -362,16 +399,29 @@ startBtn.addEventListener("click", async () => {
   startBtn.disabled = true;
   stopBtn.disabled = true;
   setRecordingSignal("pending", "Waiting for permission");
-  statusText.textContent = "Choose a screen/window in the share picker to start recording.";
+  statusText.textContent = "Preparing capture source...";
+
+  if (!selectedDisplaySourceId) {
+    await refreshDisplaySources();
+  }
+
+  if (!selectedDisplaySourceId) {
+    statusText.textContent = "No capture source available. Click Refresh and try again.";
+    setRecordingSignal("idle", "Idle");
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    return;
+  }
+
+  await window.memora.setPreferredDisplaySource(selectedDisplaySourceId);
+  statusText.textContent = "Requesting permission for selected source...";
 
   // If picker is hidden or slow, provide concrete guidance.
   pendingPickerHintTimeout = setTimeout(() => {
-    statusText.textContent = "Still waiting for the picker. Press Alt+Tab and select the screen sharing dialog.";
+    statusText.textContent = "Still waiting for permission. If prompted, allow screen capture for Memora.";
   }, 3500);
 
   try {
-    await window.memora.prepareDisplayPicker();
-
     mediaStream = await navigator.mediaDevices.getDisplayMedia({
       video: {
         frameRate: 15,
@@ -379,8 +429,6 @@ startBtn.addEventListener("click", async () => {
       // Keep start path reliable. System-audio capture will be added as an explicit option.
       audio: false,
     });
-
-    await window.memora.restoreAfterDisplayPicker();
 
     permissionState.screen = "granted";
     persistPermissionState("screen", "granted");
@@ -412,14 +460,13 @@ startBtn.addEventListener("click", async () => {
 
     mediaRecorder.start(1000);
   } catch (error) {
-    await window.memora.restoreAfterDisplayPicker();
     permissionState.screen = error?.name === "NotAllowedError" ? "denied" : "unknown";
     persistPermissionState("screen", permissionState.screen);
     refreshPermissionUI();
     if (error?.name === "NotAllowedError") {
-      statusText.textContent = "Screen selection was cancelled or denied. Recording did not start.";
+      statusText.textContent = "Screen permission was denied. Recording did not start.";
     } else {
-      statusText.textContent = "Could not open screen share picker. Try again and use Alt+Tab if needed.";
+      statusText.textContent = "Could not start capture from selected source. Click Refresh and try again.";
     }
     setRecordingSignal("idle", "Idle");
     startBtn.disabled = false;
@@ -439,6 +486,16 @@ startBtn.addEventListener("click", async () => {
   statusText.textContent = `Recording started at ${new Date(response.startedAt).toLocaleTimeString()}.`;
   await refreshSessions();
   await selectSession(response.sessionId);
+});
+
+sourceSelect.addEventListener("change", async () => {
+  selectedDisplaySourceId = sourceSelect.value || null;
+  await window.memora.setPreferredDisplaySource(selectedDisplaySourceId);
+});
+
+refreshSourcesBtn.addEventListener("click", async () => {
+  await refreshDisplaySources();
+  statusText.textContent = "Capture source list refreshed.";
 });
 
 async function stopRecordingFlow() {
@@ -564,6 +621,10 @@ refreshSessions().catch((error) => {
 });
 
 refreshPermissionUI();
+refreshDisplaySources().catch((error) => {
+  statusText.textContent = "Could not load capture sources.";
+  console.error(error);
+});
 
 if (searchResults) {
   searchResults.innerHTML = "<li>Type a query to search OCR and transcript memory.</li>";

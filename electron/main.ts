@@ -70,7 +70,6 @@ app.whenReady().then(() => {
 
       callback({});
     },
-    },
   );
 
   createWindow();

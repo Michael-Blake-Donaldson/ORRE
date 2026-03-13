@@ -30,5 +30,11 @@ const api = {
     restoreAfterDisplayPicker: async () => {
         return ipcRenderer.invoke("ui:restoreAfterDisplayPicker");
     },
+    listDisplaySources: async () => {
+        return ipcRenderer.invoke("ui:listDisplaySources");
+    },
+    setPreferredDisplaySource: async (sourceId) => {
+        return ipcRenderer.invoke("ui:setPreferredDisplaySource", sourceId);
+    },
 };
 contextBridge.exposeInMainWorld("memora", api);

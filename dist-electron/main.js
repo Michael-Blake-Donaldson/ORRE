@@ -11,6 +11,7 @@ let mainWindow = null;
 let recordingMode = "idle";
 let recordingStartedAt = null;
 let activeSessionId = null;
+let preferredDisplaySourceId = null;
 const store = createDb(app.getPath("userData"));
 const processingQueue = new ProcessingQueue(store);
 function createWindow() {
@@ -33,15 +34,16 @@ function createWindow() {
     });
 }
 app.whenReady().then(() => {
-    // Use the system picker when available so permission flow feels native.
+    // Route display capture through an app-selected source when provided.
     session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
         if (request.videoRequested) {
             const sources = await desktopCapturer.getSources({
                 types: ["screen", "window"],
                 thumbnailSize: { width: 0, height: 0 },
             });
-            // Fallback path for environments without system picker support.
-            const preferredSource = sources.find((source) => source.id.startsWith("screen:")) ?? sources[0];
+            const preferredSource = (preferredDisplaySourceId ? sources.find((source) => source.id === preferredDisplaySourceId) : null) ??
+                sources.find((source) => source.id.startsWith("screen:")) ??
+                sources[0];
             if (!preferredSource) {
                 callback({});
                 return;
@@ -53,16 +55,15 @@ app.whenReady().then(() => {
             return;
         }
         callback({});
-    }, {
-        useSystemPicker: true,
-    });
-    createWindow();
-    app.on("activate", () => {
-        if (BrowserWindow.getAllWindows().length === 0) {
-            createWindow();
-        }
     });
 });
+createWindow();
+app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+    }
+});
+;
 app.on("window-all-closed", () => {
     if (process.platform !== "darwin") {
         app.quit();
@@ -149,6 +150,21 @@ ipcMain.handle("processing:rerun", async (_event, sessionId) => {
 });
 ipcMain.handle("search:content", async (_event, payload) => {
     return store.searchExtractedContent(payload.query, payload.limit ?? 25);
+});
+ipcMain.handle("ui:listDisplaySources", async () => {
+    const sources = await desktopCapturer.getSources({
+        types: ["screen", "window"],
+        thumbnailSize: { width: 0, height: 0 },
+    });
+    return sources.map((source) => ({
+        id: source.id,
+        name: source.name,
+        type: source.id.startsWith("screen:") ? "screen" : "window",
+    }));
+});
+ipcMain.handle("ui:setPreferredDisplaySource", async (_event, sourceId) => {
+    preferredDisplaySourceId = sourceId;
+    return { ok: true };
 });
 ipcMain.handle("ui:prepareDisplayPicker", async () => {
     if (!mainWindow) {
