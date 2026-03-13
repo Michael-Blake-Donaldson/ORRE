@@ -18,6 +18,11 @@ const filterTranscriptBtn = document.getElementById("filterTranscriptBtn");
 const copyTranscriptBtn = document.getElementById("copyTranscriptBtn");
 const exportTranscriptBtn = document.getElementById("exportTranscriptBtn");
 const sessionTranscript = document.getElementById("sessionTranscript");
+const transcriptSearchInput = document.getElementById("transcriptSearchInput");
+const transcriptPrevBtn = document.getElementById("transcriptPrevBtn");
+const transcriptNextBtn = document.getElementById("transcriptNextBtn");
+const transcriptClearBtn = document.getElementById("transcriptClearBtn");
+const transcriptSearchStatus = document.getElementById("transcriptSearchStatus");
 const sessionDetailTitle = document.getElementById("sessionDetailTitle");
 const sessionDetailSubtitle = document.getElementById("sessionDetailSubtitle");
 const processingJobs = document.getElementById("processingJobs");
@@ -115,6 +120,9 @@ let recordingTimerInterval = null;
 let selectedDisplaySourceId = null;
 let currentSessionDetail = null;
 let activeChunkFilter = "all";
+let currentTranscriptSegments = [];
+let transcriptMatchIndexes = [];
+let transcriptMatchCursor = -1;
 
 const permissionState = {
   screen: localStorage.getItem("memora-permission-screen") === "granted" ? "granted" : "unknown",
@@ -334,16 +342,120 @@ function setActiveChunkFilter(nextFilter) {
 }
 
 function buildTranscriptText(chunks) {
-  const transcriptLines = chunks
-    .filter((chunk) => chunk.chunk_type === "transcript")
-    .map((chunk) => chunk.content.trim())
-    .filter((line) => line.length > 0);
+  const transcriptLines = extractTranscriptSegments(chunks).map((segment) => `[${segment.timestamp}] ${segment.text}`);
 
   if (!transcriptLines.length) {
     return "Transcript is not ready yet. Save a recording and wait for processing to complete.";
   }
 
   return transcriptLines.join("\n");
+}
+
+function extractTranscriptSegments(chunks) {
+  return chunks
+    .filter((chunk) => chunk.chunk_type === "transcript")
+    .map((chunk) => chunk.content.trim())
+    .filter((line) => line.length > 0)
+    .map((line, index) => {
+      const match = line.match(/^\[(\d{2}:\d{2})\]\s*(.*)$/);
+
+      return {
+        lineIndex: index,
+        timestamp: match ? match[1] : "00:00",
+        text: match ? match[2] : line,
+      };
+    });
+}
+
+function setTranscriptSearchStatus(text) {
+  if (transcriptSearchStatus) {
+    transcriptSearchStatus.textContent = text;
+  }
+}
+
+function jumpToTranscriptLine(lineIndex, reason = "jump") {
+  if (!sessionTranscript) {
+    return;
+  }
+
+  const target = sessionTranscript.querySelector(`[data-line-index="${lineIndex}"]`);
+  if (!target) {
+    return;
+  }
+
+  sessionTranscript.querySelectorAll(".transcript-line--current").forEach((node) => {
+    node.classList.remove("transcript-line--current");
+  });
+
+  target.classList.add("transcript-line--current");
+  target.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+  const segment = currentTranscriptSegments.find((item) => item.lineIndex === lineIndex);
+  if (segment) {
+    if (reason === "search") {
+      setTranscriptSearchStatus(`Jumped to ${segment.timestamp}.`);
+      return;
+    }
+
+    statusText.textContent = `Transcript jump: ${segment.timestamp}`;
+  }
+}
+
+function refreshTranscriptMatches(query) {
+  transcriptMatchIndexes = [];
+  transcriptMatchCursor = -1;
+
+  if (!sessionTranscript) {
+    return;
+  }
+
+  const normalized = query.trim().toLowerCase();
+  const rows = Array.from(sessionTranscript.querySelectorAll(".transcript-line"));
+
+  rows.forEach((row, visualIndex) => {
+    row.classList.remove("transcript-line--match", "transcript-line--current");
+
+    if (!normalized) {
+      return;
+    }
+
+    const segment = currentTranscriptSegments[visualIndex];
+    if (!segment) {
+      return;
+    }
+
+    const haystack = `${segment.timestamp} ${segment.text}`.toLowerCase();
+    if (haystack.includes(normalized)) {
+      row.classList.add("transcript-line--match");
+      transcriptMatchIndexes.push(segment.lineIndex);
+    }
+  });
+
+  if (!normalized) {
+    setTranscriptSearchStatus("No active transcript search.");
+    return;
+  }
+
+  if (!transcriptMatchIndexes.length) {
+    setTranscriptSearchStatus("No transcript matches found.");
+    return;
+  }
+
+  transcriptMatchCursor = 0;
+  jumpToTranscriptLine(transcriptMatchIndexes[0], "search");
+  setTranscriptSearchStatus(`Match 1 of ${transcriptMatchIndexes.length}.`);
+}
+
+function stepTranscriptMatch(direction) {
+  if (!transcriptMatchIndexes.length) {
+    setTranscriptSearchStatus("No transcript matches to navigate.");
+    return;
+  }
+
+  transcriptMatchCursor = (transcriptMatchCursor + direction + transcriptMatchIndexes.length) % transcriptMatchIndexes.length;
+  const nextLineIndex = transcriptMatchIndexes[transcriptMatchCursor];
+  jumpToTranscriptLine(nextLineIndex, "search");
+  setTranscriptSearchStatus(`Match ${transcriptMatchCursor + 1} of ${transcriptMatchIndexes.length}.`);
 }
 
 function renderExtractedChunksList(chunks) {
@@ -372,7 +484,36 @@ function renderTranscript(detail) {
     return;
   }
 
-  sessionTranscript.textContent = buildTranscriptText(detail.chunks);
+  currentTranscriptSegments = extractTranscriptSegments(detail.chunks);
+
+  if (!currentTranscriptSegments.length) {
+    sessionTranscript.textContent = "Transcript is not ready yet. Save a recording and wait for processing to complete.";
+    setTranscriptSearchStatus("No transcript lines available yet.");
+    return;
+  }
+
+  sessionTranscript.innerHTML = currentTranscriptSegments
+    .map((segment) => {
+      return `<div class="transcript-line" data-line-index="${segment.lineIndex}"><span class="transcript-ts">[${segment.timestamp}]</span><span>${segment.text}</span></div>`;
+    })
+    .join("");
+
+  sessionTranscript.querySelectorAll(".transcript-line").forEach((node) => {
+    node.addEventListener("click", () => {
+      const indexText = node.getAttribute("data-line-index");
+      if (indexText) {
+        jumpToTranscriptLine(Number(indexText), "click");
+      }
+    });
+  });
+
+  const activeQuery = transcriptSearchInput?.value?.trim() ?? "";
+  if (activeQuery) {
+    refreshTranscriptMatches(activeQuery);
+    return;
+  }
+
+  setTranscriptSearchStatus("No active transcript search.");
 }
 
 function renderSessions(rows) {
@@ -481,6 +622,10 @@ function renderSessionDetail(detail) {
     if (sessionTranscript) {
       sessionTranscript.textContent = "No transcript generated yet.";
     }
+    currentTranscriptSegments = [];
+    transcriptMatchIndexes = [];
+    transcriptMatchCursor = -1;
+    setTranscriptSearchStatus("No active transcript search.");
     rerunBtn.disabled = true;
     stopDetailPolling();
     return;
@@ -863,6 +1008,35 @@ exportTranscriptBtn?.addEventListener("click", () => {
   link.remove();
   URL.revokeObjectURL(url);
   statusText.textContent = "Transcript exported as .txt.";
+});
+
+transcriptSearchInput?.addEventListener("input", () => {
+  refreshTranscriptMatches(transcriptSearchInput.value);
+});
+
+transcriptSearchInput?.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") {
+    return;
+  }
+
+  event.preventDefault();
+  stepTranscriptMatch(event.shiftKey ? -1 : 1);
+});
+
+transcriptPrevBtn?.addEventListener("click", () => {
+  stepTranscriptMatch(-1);
+});
+
+transcriptNextBtn?.addEventListener("click", () => {
+  stepTranscriptMatch(1);
+});
+
+transcriptClearBtn?.addEventListener("click", () => {
+  if (transcriptSearchInput) {
+    transcriptSearchInput.value = "";
+  }
+
+  refreshTranscriptMatches("");
 });
 
 generateSummaryBtn.addEventListener("click", async () => {

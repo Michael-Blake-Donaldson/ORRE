@@ -166,6 +166,15 @@
                 <button id="exportTranscriptBtn" class="button button--mini">Export .txt</button>
               </div>
             </div>
+            <div class="search-row search-row--transcript">
+              <input id="transcriptSearchInput" type="text" placeholder="Find in transcript (keyword or 02:15)" />
+              <div class="button-row button-row--compact">
+                <button id="transcriptPrevBtn" class="button button--mini">Prev</button>
+                <button id="transcriptNextBtn" class="button button--mini">Next</button>
+                <button id="transcriptClearBtn" class="button button--mini">Clear</button>
+              </div>
+            </div>
+            <p id="transcriptSearchStatus" class="status">No active transcript search.</p>
             <div id="sessionTranscript" class="summary-output transcript-output">No transcript generated yet.</div>
           </article>
 

@@ -224,6 +224,12 @@ body {
   margin-bottom: 12px;
 }
 
+.search-row--transcript {
+  align-items: center;
+  margin-top: 12px;
+  margin-bottom: 8px;
+}
+
 input[type="text"] {
   border: 1px solid var(--panel-border);
   border-radius: 10px;
@@ -320,6 +326,33 @@ select {
   font-family: Consolas, "Courier New", monospace;
   max-height: 260px;
   overflow: auto;
+}
+
+.transcript-line {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+
+.transcript-line:hover {
+  border-color: var(--panel-border);
+  background: #121a27;
+}
+
+.transcript-line--match {
+  border-color: #5f7ea8;
+}
+
+.transcript-line--current {
+  border-color: #2bbf90;
+  background: #11221f;
+}
+
+.transcript-ts {
+  color: #7df3cf;
+  margin-right: 8px;
 }
 
 .checklist {
