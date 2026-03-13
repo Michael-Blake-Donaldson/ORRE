@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Memora</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="nav-rail">
+        <div class="brand">Memora</div>
+        <button class="nav-item nav-item--active">Dashboard</button>
+        <button class="nav-item" disabled>Record</button>
+        <button class="nav-item" disabled>Library</button>
+        <button class="nav-item" disabled>Search</button>
+        <button class="nav-item" disabled>Settings</button>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <h1>Phase 1: Product Foundation</h1>
+            <p>Windows-first desktop shell with privacy-safe recording controls.</p>
+          </div>
+          <div id="recordingBadge" class="badge badge--idle">Not Recording</div>
+        </header>
+
+        <section class="grid">
+          <article class="panel">
+            <h2>Start Session</h2>
+            <p>Memora records only when explicitly enabled.</p>
+
+            <div class="field-row">
+              <label for="modeSelect">Session Mode</label>
+              <select id="modeSelect">
+                <option value="session">Manual Session</option>
+                <option value="clip">Quick Clip</option>
+                <option value="always-on">Always-On (Opt-In)</option>
+              </select>
+            </div>
+
+            <div class="button-row">
+              <button id="startBtn" class="button button--primary">Start Recording</button>
+              <button id="stopBtn" class="button" disabled>Stop</button>
+            </div>
+
+            <p id="statusText" class="status">Ready. Recording is off by default.</p>
+          </article>
+
+          <article class="panel">
+            <h2>Privacy Defaults</h2>
+            <ul>
+              <li>Recording starts only on manual action.</li>
+              <li>Persistent recording state indicator is always visible.</li>
+              <li>Always-on mode is visible and explicit.</li>
+              <li>No screen content processing yet in this phase.</li>
+            </ul>
+          </article>
+
+          <article class="panel panel--wide">
+            <h2>Build Roadmap Status</h2>
+            <div class="checklist">
+              <label><input type="checkbox" checked disabled /> Phase 1 foundation shell</label>
+              <label><input type="checkbox" disabled /> Phase 2 capture pipeline</label>
+              <label><input type="checkbox" disabled /> Phase 3 OCR and transcription</label>
+              <label><input type="checkbox" disabled /> Phase 4 AI summary and notes</label>
+              <label><input type="checkbox" disabled /> Phase 5 search and retrieval</label>
+            </div>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="./renderer.js"></script>
+  </body>
+</html>
