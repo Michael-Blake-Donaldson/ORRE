@@ -295,6 +295,18 @@ select {
   color: var(--muted);
 }
 
+.diagnostics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+  color: var(--muted);
+}
+
+.diagnostics-grid span {
+  color: var(--text);
+  font-family: Consolas, "Courier New", monospace;
+}
+
 ul {
   color: var(--muted);
   margin-bottom: 0;
@@ -369,7 +381,8 @@ ul {
   }
 
   .detail-grid,
-  .grid {
+  .grid,
+  .diagnostics-grid {
     grid-template-columns: 1fr;
   }
 }

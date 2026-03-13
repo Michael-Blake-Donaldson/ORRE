@@ -21,11 +21,46 @@ const micPermissionStatus = document.getElementById("micPermissionStatus");
 const searchInput = document.getElementById("searchInput");
 const searchBtn = document.getElementById("searchBtn");
 const searchResults = document.getElementById("searchResults");
+const diagBridgeLoaded = document.getElementById("diagBridgeLoaded");
+const diagSourceCount = document.getElementById("diagSourceCount");
+const diagSelectedSource = document.getElementById("diagSelectedSource");
+const diagLastError = document.getElementById("diagLastError");
+
+const diagnostics = {
+  bridgeLoaded: false,
+  sourceCount: 0,
+  selectedSource: "none",
+  lastCaptureError: "none",
+};
+
+function refreshDiagnosticsUI() {
+  if (diagBridgeLoaded) {
+    diagBridgeLoaded.textContent = diagnostics.bridgeLoaded ? "true" : "false";
+  }
+
+  if (diagSourceCount) {
+    diagSourceCount.textContent = String(diagnostics.sourceCount);
+  }
+
+  if (diagSelectedSource) {
+    diagSelectedSource.textContent = diagnostics.selectedSource;
+  }
+
+  if (diagLastError) {
+    diagLastError.textContent = diagnostics.lastCaptureError;
+  }
+}
 
 function getMemoraApi() {
   if (window.memora) {
+    diagnostics.bridgeLoaded = true;
+    refreshDiagnosticsUI();
     return window.memora;
   }
+
+  diagnostics.bridgeLoaded = false;
+  diagnostics.lastCaptureError = "bridge-unavailable";
+  refreshDiagnosticsUI();
 
   statusText.textContent = "Desktop bridge failed to load. Restart Memora from terminal with npm run dev.";
 
@@ -112,6 +147,7 @@ async function refreshDisplaySources() {
   }
 
   const sources = await api.listDisplaySources();
+  diagnostics.sourceCount = sources.length;
 
   const options = [
     `<option value="${SYSTEM_PICKER_VALUE}">Use system picker (manual choose each start)</option>`,
@@ -137,6 +173,8 @@ async function refreshDisplaySources() {
 
   sourceSelect.value = resolvedSourceId;
   selectedDisplaySourceId = resolvedSourceId === SYSTEM_PICKER_VALUE ? null : resolvedSourceId;
+  diagnostics.selectedSource = selectedDisplaySourceId ?? "system-picker";
+  refreshDiagnosticsUI();
   await api.setPreferredDisplaySource(selectedDisplaySourceId);
 }
 
@@ -149,11 +187,17 @@ async function requestScreenPermission() {
     refreshPermissionUI();
     return { granted: true, reason: "granted" };
   } catch (error) {
+    diagnostics.lastCaptureError = error?.name ?? "capture-start-failed";
+    refreshDiagnosticsUI();
+
     permissionState.screen = error?.name === "NotAllowedError" ? "denied" : "unknown";
     persistPermissionState("screen", permissionState.screen);
     refreshPermissionUI();
     return { granted: false, reason: error?.name ?? "unknown" };
   }
+
+  diagnostics.lastCaptureError = "none";
+  refreshDiagnosticsUI();
 }
 
 async function requestMicPermission() {
@@ -564,6 +608,8 @@ sourceSelect.addEventListener("change", async () => {
   }
 
   selectedDisplaySourceId = sourceSelect.value === SYSTEM_PICKER_VALUE ? null : sourceSelect.value || null;
+  diagnostics.selectedSource = selectedDisplaySourceId ?? "system-picker";
+  refreshDiagnosticsUI();
   await api.setPreferredDisplaySource(selectedDisplaySourceId);
 });
 
@@ -705,8 +751,11 @@ refreshSessions().catch((error) => {
 });
 
 refreshPermissionUI();
+refreshDiagnosticsUI();
 refreshDisplaySources().catch((error) => {
   statusText.textContent = "Could not load capture sources.";
+  diagnostics.lastCaptureError = error?.name ?? "source-list-failed";
+  refreshDiagnosticsUI();
   console.error(error);
 });
 
