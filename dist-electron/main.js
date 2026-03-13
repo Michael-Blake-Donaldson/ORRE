@@ -1,10 +1,13 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { promises as fs } from "node:fs";
+import { dialog } from "electron";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 let mainWindow = null;
 let recordingMode = "idle";
+let recordingStartedAt = null;
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1280,
@@ -45,16 +48,36 @@ ipcMain.handle("recording:getState", async () => {
 });
 ipcMain.handle("recording:start", async (_event, mode) => {
     recordingMode = mode;
+    recordingStartedAt = new Date().toISOString();
     return {
         ok: true,
         mode: recordingMode,
-        startedAt: new Date().toISOString(),
+        startedAt: recordingStartedAt,
     };
 });
 ipcMain.handle("recording:stop", async () => {
     recordingMode = "idle";
-    return {
+    const stoppedAt = new Date().toISOString();
+    const response = {
         ok: true,
-        stoppedAt: new Date().toISOString(),
+        stoppedAt,
+        startedAt: recordingStartedAt,
     };
+    recordingStartedAt = null;
+    return response;
+});
+ipcMain.handle("recording:save", async (_event, payload) => {
+    if (!mainWindow) {
+        return { ok: false, reason: "window-unavailable" };
+    }
+    const result = await dialog.showSaveDialog(mainWindow, {
+        title: "Save Memora Recording",
+        defaultPath: payload.suggestedName,
+        filters: [{ name: "WebM Video", extensions: ["webm"] }],
+    });
+    if (result.canceled || !result.filePath) {
+        return { ok: false, reason: "cancelled" };
+    }
+    await fs.writeFile(result.filePath, Buffer.from(payload.bytes));
+    return { ok: true, filePath: result.filePath };
 });

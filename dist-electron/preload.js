@@ -9,5 +9,8 @@ const api = {
     stopRecording: async () => {
         return ipcRenderer.invoke("recording:stop");
     },
+    saveRecording: async (bytes, suggestedName) => {
+        return ipcRenderer.invoke("recording:save", { bytes, suggestedName });
+    },
 };
 contextBridge.exposeInMainWorld("memora", api);
