@@ -22,6 +22,29 @@ const searchInput = document.getElementById("searchInput");
 const searchBtn = document.getElementById("searchBtn");
 const searchResults = document.getElementById("searchResults");
 
+function getMemoraApi() {
+  if (window.memora) {
+    return window.memora;
+  }
+
+  statusText.textContent = "Desktop bridge failed to load. Restart Memora from terminal with npm run dev.";
+
+  if (startBtn) {
+    startBtn.disabled = true;
+  }
+
+  if (stopBtn) {
+    stopBtn.disabled = true;
+  }
+
+  if (sourceSelect) {
+    sourceSelect.disabled = true;
+    sourceSelect.innerHTML = "<option value=\"\">Bridge unavailable</option>";
+  }
+
+  return null;
+}
+
 let mediaRecorder = null;
 let mediaStream = null;
 let recordedChunks = [];
@@ -79,11 +102,16 @@ function refreshPermissionUI() {
 }
 
 async function refreshDisplaySources() {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
   if (!sourceSelect) {
     return;
   }
 
-  const sources = await window.memora.listDisplaySources();
+  const sources = await api.listDisplaySources();
 
   const options = [
     `<option value="${SYSTEM_PICKER_VALUE}">Use system picker (manual choose each start)</option>`,
@@ -97,6 +125,10 @@ async function refreshDisplaySources() {
   sourceSelect.disabled = false;
   sourceSelect.innerHTML = options.join("");
 
+  if (!sources.length) {
+    statusText.textContent = "No screens/windows detected. Switch to system picker mode or click Refresh.";
+  }
+
   const fallbackSourceId = sources[0]?.id ?? SYSTEM_PICKER_VALUE;
   const resolvedSourceId =
     selectedDisplaySourceId && sources.some((source) => source.id === selectedDisplaySourceId)
@@ -105,7 +137,7 @@ async function refreshDisplaySources() {
 
   sourceSelect.value = resolvedSourceId;
   selectedDisplaySourceId = resolvedSourceId === SYSTEM_PICKER_VALUE ? null : resolvedSourceId;
-  await window.memora.setPreferredDisplaySource(selectedDisplaySourceId);
+  await api.setPreferredDisplaySource(selectedDisplaySourceId);
 }
 
 async function requestScreenPermission() {
@@ -245,7 +277,12 @@ function renderSessions(rows) {
 }
 
 async function refreshSessions() {
-  const rows = await window.memora.listSessions();
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
+  const rows = await api.listSessions();
   renderSessions(rows);
 
   if (!selectedSessionId && rows.length > 0) {
@@ -283,6 +320,11 @@ function renderSearchResults(rows) {
 }
 
 async function runSearch() {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
   if (!searchInput || !searchResults) {
     return;
   }
@@ -293,7 +335,7 @@ async function runSearch() {
     return;
   }
 
-  const rows = await window.memora.searchContent(query, 25);
+  const rows = await api.searchContent(query, 25);
   renderSearchResults(rows);
 }
 
@@ -350,11 +392,16 @@ function renderSessionDetail(detail) {
 }
 
 async function refreshSelectedSessionDetail() {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
   if (!selectedSessionId) {
     return;
   }
 
-  const detail = await window.memora.getSessionDetail(selectedSessionId);
+  const detail = await api.getSessionDetail(selectedSessionId);
   renderSessionDetail(detail);
 }
 
@@ -388,11 +435,21 @@ function setRecordingUI(isRecording, mode) {
 }
 
 async function refreshState() {
-  const state = await window.memora.getRecordingState();
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
+  const state = await api.getRecordingState();
   setRecordingUI(state.isRecording, state.mode);
 }
 
 startBtn.addEventListener("click", async () => {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
   const mode = modeSelect.value;
   startBtn.disabled = true;
   stopBtn.disabled = true;
@@ -405,7 +462,7 @@ startBtn.addEventListener("click", async () => {
 
   const isSystemPickerMode = sourceSelect && sourceSelect.value === SYSTEM_PICKER_VALUE;
 
-  await window.memora.setPreferredDisplaySource(isSystemPickerMode ? null : selectedDisplaySourceId);
+  await api.setPreferredDisplaySource(isSystemPickerMode ? null : selectedDisplaySourceId);
   statusText.textContent = isSystemPickerMode
     ? "Waiting for system picker selection..."
     : "Requesting permission for selected source...";
@@ -419,7 +476,7 @@ startBtn.addEventListener("click", async () => {
 
   try {
     if (isSystemPickerMode) {
-      await window.memora.prepareDisplayPicker();
+      await api.prepareDisplayPicker();
     }
 
     mediaStream = await navigator.mediaDevices.getDisplayMedia({
@@ -431,7 +488,7 @@ startBtn.addEventListener("click", async () => {
     });
 
     if (isSystemPickerMode) {
-      await window.memora.restoreAfterDisplayPicker();
+      await api.restoreAfterDisplayPicker();
     }
 
     permissionState.screen = "granted";
@@ -465,7 +522,7 @@ startBtn.addEventListener("click", async () => {
     mediaRecorder.start(1000);
   } catch (error) {
     if (isSystemPickerMode) {
-      await window.memora.restoreAfterDisplayPicker();
+      await api.restoreAfterDisplayPicker();
     }
 
     permissionState.screen = error?.name === "NotAllowedError" ? "denied" : "unknown";
@@ -492,7 +549,7 @@ startBtn.addEventListener("click", async () => {
     pendingPickerHintTimeout = null;
   }
 
-  const response = await window.memora.startRecording(mode);
+  const response = await api.startRecording(mode);
 
   setRecordingUI(true, response.mode);
   statusText.textContent = `Recording started at ${new Date(response.startedAt).toLocaleTimeString()}.`;
@@ -501,8 +558,13 @@ startBtn.addEventListener("click", async () => {
 });
 
 sourceSelect.addEventListener("change", async () => {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
   selectedDisplaySourceId = sourceSelect.value === SYSTEM_PICKER_VALUE ? null : sourceSelect.value || null;
-  await window.memora.setPreferredDisplaySource(selectedDisplaySourceId);
+  await api.setPreferredDisplaySource(selectedDisplaySourceId);
 });
 
 refreshSourcesBtn.addEventListener("click", async () => {
@@ -511,6 +573,11 @@ refreshSourcesBtn.addEventListener("click", async () => {
 });
 
 async function stopRecordingFlow() {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
   if (!mediaRecorder) {
     statusText.textContent = "No active recorder found.";
     return;
@@ -533,7 +600,7 @@ async function stopRecordingFlow() {
   mediaRecorder = null;
   mediaStream = null;
 
-  const stopResponse = await window.memora.stopRecording();
+  const stopResponse = await api.stopRecording();
 
   if (!stopResponse.sessionId) {
     setRecordingUI(false, "idle");
@@ -546,7 +613,7 @@ async function stopRecordingFlow() {
   const bytes = Array.from(new Uint8Array(buffer));
 
   // For long recordings we will stream chunks to disk in a later phase.
-  const saveResponse = await window.memora.saveRecording(
+  const saveResponse = await api.saveRecording(
     stopResponse.sessionId,
     bytes,
     makeSuggestedFilename(stopResponse.startedAt ?? stopResponse.stoppedAt),
@@ -606,11 +673,16 @@ searchInput.addEventListener("keydown", async (event) => {
 });
 
 rerunBtn.addEventListener("click", async () => {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
   if (!selectedSessionId) {
     return;
   }
 
-  const response = await window.memora.rerunProcessing(selectedSessionId);
+  const response = await api.rerunProcessing(selectedSessionId);
   if (!response.ok) {
     statusText.textContent = "Could not rerun processing for this session.";
     return;

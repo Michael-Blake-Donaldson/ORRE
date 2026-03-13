@@ -40,6 +40,7 @@ function createWindow() {
             preload: path.join(__dirname, "preload.js"),
             contextIsolation: true,
             nodeIntegration: false,
+            sandbox: false,
         },
     });
     mainWindow.loadFile(path.resolve(__dirname, "../app/index.html"));
