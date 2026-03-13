@@ -1,4 +1,4 @@
-import ffmpegPath from "ffmpeg-static";
+import ffmpegPathImport from "ffmpeg-static";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -12,6 +12,7 @@ type OcrChunk = {
 
 const FRAME_INTERVAL_SECONDS = 4;
 const MAX_FRAMES = 8;
+const ffmpegPath = ffmpegPathImport as unknown as string | null;
 
 function runFfmpeg(args: string[]) {
   return new Promise<void>((resolve, reject) => {
@@ -22,11 +23,11 @@ function runFfmpeg(args: string[]) {
 
     const ffmpeg = spawn(ffmpegPath, args, { stdio: "ignore" });
 
-    ffmpeg.on("error", (error) => {
+    ffmpeg.on("error", (error: Error) => {
       reject(error);
     });
 
-    ffmpeg.on("close", (code) => {
+    ffmpeg.on("close", (code: number | null) => {
       if (code === 0) {
         resolve();
         return;

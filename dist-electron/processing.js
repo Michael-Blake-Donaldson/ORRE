@@ -1,3 +1,4 @@
+import { cleanupExtractedFrames, extractFramesFromVideo, runOcrOnFrames } from "./ocr.js";
 export class ProcessingQueue {
     store;
     queue = [];
@@ -37,13 +38,24 @@ export class ProcessingQueue {
     async runPipeline(task) {
         this.store.queueProcessingJobs(task.sessionId);
         await this.runSingleJob(task.sessionId, "ocr", async () => {
-            // Placeholder output until OCR engine is integrated in the next step.
-            this.store.replaceExtractedChunks(task.sessionId, "ocr", [
-                {
-                    content: `OCR placeholder: Indexed visual content from ${task.filePath}`,
-                    confidence: 0.62,
-                },
-            ]);
+            let framePaths = [];
+            try {
+                framePaths = await extractFramesFromVideo(task.filePath, task.sessionId);
+                const ocrChunks = await runOcrOnFrames(framePaths);
+                if (ocrChunks.length === 0) {
+                    this.store.replaceExtractedChunks(task.sessionId, "ocr", [
+                        {
+                            content: "OCR completed, but no readable on-screen text was detected in sampled frames.",
+                            confidence: 0.5,
+                        },
+                    ]);
+                    return;
+                }
+                this.store.replaceExtractedChunks(task.sessionId, "ocr", ocrChunks);
+            }
+            finally {
+                await cleanupExtractedFrames(framePaths);
+            }
         });
         await this.runSingleJob(task.sessionId, "transcript", async () => {
             // Placeholder output until ASR engine is integrated in the next step.
