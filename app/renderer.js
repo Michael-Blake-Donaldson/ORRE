@@ -500,13 +500,16 @@ startBtn.addEventListener("click", async () => {
   setRecordingSignal("pending", "Preparing capture");
   statusText.textContent = "Preparing capture source...";
 
-  if (!selectedDisplaySourceId) {
-    await refreshDisplaySources();
-  }
-
   const isSystemPickerMode = sourceSelect && sourceSelect.value === SYSTEM_PICKER_VALUE;
 
-  await api.setPreferredDisplaySource(isSystemPickerMode ? null : selectedDisplaySourceId);
+  if (!isSystemPickerMode && !selectedDisplaySourceId) {
+    statusText.textContent = "No capture source selected. Choose a source or switch to system picker mode.";
+    setRecordingSignal("idle", "Idle");
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    return;
+  }
+
   statusText.textContent = isSystemPickerMode
     ? "Waiting for system picker selection..."
     : "Requesting permission for selected source...";
@@ -519,10 +522,7 @@ startBtn.addEventListener("click", async () => {
   }
 
   try {
-    if (isSystemPickerMode) {
-      await api.prepareDisplayPicker();
-    }
-
+    // Keep this call directly in click flow so browser user activation is preserved.
     mediaStream = await navigator.mediaDevices.getDisplayMedia({
       video: {
         frameRate: 15,
@@ -530,10 +530,6 @@ startBtn.addEventListener("click", async () => {
       // Keep start path reliable. System-audio capture will be added as an explicit option.
       audio: false,
     });
-
-    if (isSystemPickerMode) {
-      await api.restoreAfterDisplayPicker();
-    }
 
     permissionState.screen = "granted";
     persistPermissionState("screen", "granted");
@@ -565,10 +561,6 @@ startBtn.addEventListener("click", async () => {
 
     mediaRecorder.start(1000);
   } catch (error) {
-    if (isSystemPickerMode) {
-      await api.restoreAfterDisplayPicker();
-    }
-
     permissionState.screen = error?.name === "NotAllowedError" ? "denied" : "unknown";
     persistPermissionState("screen", permissionState.screen);
     refreshPermissionUI();
