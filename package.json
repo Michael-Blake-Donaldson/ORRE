@@ -11,7 +11,9 @@
     "build": "npm run build:electron",
     "start": "npm run dev"
   },
-  "dependencies": {},
+  "dependencies": {
+    "better-sqlite3": "^12.6.2"
+  },
   "devDependencies": {
     "@types/node": "^24.12.0",
     "electron": "^36.5.0",
