@@ -5,6 +5,7 @@ import { promises as fs } from "node:fs";
 import { dialog } from "electron";
 import { createDb, type MemoraStore, type SessionRow } from "./db.js";
 import { ProcessingQueue } from "./processing.js";
+import { buildSessionSummary } from "./summary.js";
 
 type RecordingMode = "idle" | "session" | "clip" | "always-on";
 
@@ -205,6 +206,12 @@ ipcMain.handle("processing:rerun", async (_event, sessionId: string) => {
 
 ipcMain.handle("search:content", async (_event, payload: { query: string; limit?: number }) => {
   return store.searchExtractedContent(payload.query, payload.limit ?? 25);
+});
+
+ipcMain.handle("sessions:generateSummary", async (_event, sessionId: string) => {
+  const detail = store.getSessionDetail(sessionId);
+  const summary = buildSessionSummary(detail.chunks);
+  return summary;
 });
 
 ipcMain.handle("ui:listDisplaySources", async () => {

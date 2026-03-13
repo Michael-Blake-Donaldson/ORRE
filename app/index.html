@@ -11,15 +11,15 @@
     <div class="app-shell">
       <aside class="nav-rail">
         <div class="brand">Memora</div>
-        <button class="nav-item nav-item--active">Dashboard</button>
-        <button class="nav-item" disabled>Record</button>
-        <button class="nav-item" disabled>Library</button>
-        <button class="nav-item" disabled>Search</button>
-        <button class="nav-item" disabled>Settings</button>
+        <button class="nav-item nav-item--active" data-target="topAnchor">Dashboard</button>
+        <button class="nav-item" data-target="recordPanel">Record</button>
+        <button class="nav-item" data-target="libraryPanel">Library</button>
+        <button class="nav-item" data-target="searchPanel">Search</button>
+        <button class="nav-item" data-target="settingsPanel">Settings</button>
       </aside>
 
       <main class="workspace">
-        <header class="topbar">
+        <header id="topAnchor" class="topbar">
           <div>
             <h1>Phase 1: Product Foundation</h1>
             <p>Windows-first desktop shell with privacy-safe recording controls.</p>
@@ -35,7 +35,7 @@
         </header>
 
         <section class="grid">
-          <article class="panel">
+          <article id="recordPanel" class="panel">
             <h2>Start Session</h2>
             <p>Memora records only when explicitly enabled and asks where to save after stop.</p>
 
@@ -102,7 +102,7 @@
             </div>
           </article>
 
-          <article class="panel panel--wide">
+          <article id="libraryPanel" class="panel panel--wide">
             <h2>Recent Sessions</h2>
             <ul id="recentSessions" class="session-list session-list--selectable"></ul>
           </article>
@@ -117,7 +117,7 @@
             </div>
           </article>
 
-          <article class="panel panel--wide">
+          <article id="searchPanel" class="panel panel--wide">
             <div class="panel-header">
               <h2>Search Memory</h2>
             </div>
@@ -135,6 +135,11 @@
             </div>
             <p id="sessionDetailSubtitle" class="status">Select a session to inspect processing jobs and extracted data.</p>
 
+            <div class="button-row">
+              <button id="generateSummaryBtn" class="button">Generate Session Summary</button>
+            </div>
+            <div id="sessionSummary" class="summary-output">No summary generated yet.</div>
+
             <div class="detail-grid">
               <div>
                 <h3>Processing Jobs</h3>
@@ -146,6 +151,11 @@
                 <ul id="extractedChunks" class="session-list"></ul>
               </div>
             </div>
+          </article>
+
+          <article id="settingsPanel" class="panel panel--wide">
+            <h2>Settings</h2>
+            <p class="status">Current build includes capture, OCR pipeline, search, and diagnostics. More settings are coming next.</p>
           </article>
         </section>
       </main>

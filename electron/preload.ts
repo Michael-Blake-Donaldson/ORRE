@@ -97,6 +97,13 @@ const api = {
   searchContent: async (query: string, limit = 25) => {
     return ipcRenderer.invoke("search:content", { query, limit }) as Promise<SearchResultRow[]>;
   },
+  generateSessionSummary: async (sessionId: string) => {
+    return ipcRenderer.invoke("sessions:generateSummary", sessionId) as Promise<{
+      overview: string;
+      keyPoints: string[];
+      actionItems: string[];
+    }>;
+  },
   prepareDisplayPicker: async () => {
     return ipcRenderer.invoke("ui:prepareDisplayPicker") as Promise<void>;
   },

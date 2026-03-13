@@ -10,6 +10,8 @@ const startBtn = document.getElementById("startBtn");
 const stopBtn = document.getElementById("stopBtn");
 const recentSessions = document.getElementById("recentSessions");
 const rerunBtn = document.getElementById("rerunBtn");
+const generateSummaryBtn = document.getElementById("generateSummaryBtn");
+const sessionSummary = document.getElementById("sessionSummary");
 const sessionDetailTitle = document.getElementById("sessionDetailTitle");
 const sessionDetailSubtitle = document.getElementById("sessionDetailSubtitle");
 const processingJobs = document.getElementById("processingJobs");
@@ -21,6 +23,7 @@ const micPermissionStatus = document.getElementById("micPermissionStatus");
 const searchInput = document.getElementById("searchInput");
 const searchBtn = document.getElementById("searchBtn");
 const searchResults = document.getElementById("searchResults");
+const navButtons = Array.from(document.querySelectorAll(".nav-item[data-target]"));
 const diagBridgeLoaded = document.getElementById("diagBridgeLoaded");
 const diagSourceCount = document.getElementById("diagSourceCount");
 const diagSelectedSource = document.getElementById("diagSelectedSource");
@@ -49,6 +52,22 @@ function refreshDiagnosticsUI() {
   if (diagLastError) {
     diagLastError.textContent = diagnostics.lastCaptureError;
   }
+}
+
+function setupNavigation() {
+  navButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const targetId = button.getAttribute("data-target");
+      const target = targetId ? document.getElementById(targetId) : null;
+
+      navButtons.forEach((item) => item.classList.remove("nav-item--active"));
+      button.classList.add("nav-item--active");
+
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
+  });
 }
 
 function getMemoraApi() {
@@ -730,6 +749,49 @@ rerunBtn.addEventListener("click", async () => {
   await refreshSelectedSessionDetail();
 });
 
+generateSummaryBtn.addEventListener("click", async () => {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
+  if (!selectedSessionId) {
+    statusText.textContent = "Select a session first, then generate its summary.";
+    return;
+  }
+
+  generateSummaryBtn.disabled = true;
+  sessionSummary.textContent = "Generating summary...";
+
+  try {
+    const summary = await api.generateSessionSummary(selectedSessionId);
+
+    const keyPointsText = summary.keyPoints.length
+      ? summary.keyPoints.map((point, index) => `${index + 1}. ${point}`).join("\n")
+      : "No strong key points detected yet.";
+
+    const actionItemsText = summary.actionItems.length
+      ? summary.actionItems.map((item, index) => `${index + 1}. ${item}`).join("\n")
+      : "No action items detected yet.";
+
+    sessionSummary.textContent = [
+      `Overview: ${summary.overview}`,
+      "",
+      "Key Points:",
+      keyPointsText,
+      "",
+      "Action Items:",
+      actionItemsText,
+    ].join("\n");
+  } catch (error) {
+    sessionSummary.textContent = "Failed to generate summary for this session.";
+    diagnostics.lastCaptureError = error?.name ?? "summary-failed";
+    refreshDiagnosticsUI();
+  } finally {
+    generateSummaryBtn.disabled = false;
+  }
+});
+
 refreshState().catch((error) => {
   statusText.textContent = "Failed to load recording state.";
   console.error(error);
@@ -744,6 +806,7 @@ refreshSessions().catch((error) => {
 
 refreshPermissionUI();
 refreshDiagnosticsUI();
+setupNavigation();
 refreshDisplaySources().catch((error) => {
   statusText.textContent = "Could not load capture sources.";
   diagnostics.lastCaptureError = error?.name ?? "source-list-failed";

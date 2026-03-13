@@ -50,6 +50,10 @@ body {
   background: transparent;
 }
 
+.nav-item:hover {
+  border-color: #2a3442;
+}
+
 .nav-item--active {
   color: var(--text);
   border-color: var(--panel-border);
@@ -287,6 +291,16 @@ select {
 .status {
   color: var(--muted);
   margin-bottom: 0;
+}
+
+.summary-output {
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: #0f141dcc;
+  color: var(--text);
+  padding: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
 }
 
 .checklist {
