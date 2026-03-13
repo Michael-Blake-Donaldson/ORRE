@@ -19,6 +19,23 @@ let preferredDisplaySourceId: string | null = null;
 const store = createDb(app.getPath("userData")) as MemoraStore;
 const processingQueue = new ProcessingQueue(store);
 
+async function getAvailableDisplaySources() {
+  const sources = await desktopCapturer.getSources({
+    types: ["screen", "window"],
+    thumbnailSize: { width: 320, height: 180 },
+  });
+
+  if (sources.length > 0) {
+    return sources;
+  }
+
+  // Retry with screen-only for environments where window listing can fail.
+  return desktopCapturer.getSources({
+    types: ["screen"],
+    thumbnailSize: { width: 320, height: 180 },
+  });
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -46,10 +63,7 @@ app.whenReady().then(() => {
   session.defaultSession.setDisplayMediaRequestHandler(
     async (request, callback) => {
       if (request.videoRequested) {
-        const sources = await desktopCapturer.getSources({
-          types: ["screen", "window"],
-          thumbnailSize: { width: 0, height: 0 },
-        });
+        const sources = await getAvailableDisplaySources();
 
         const preferredSource =
           (preferredDisplaySourceId ? sources.find((source) => source.id === preferredDisplaySourceId) : null) ??
@@ -193,10 +207,7 @@ ipcMain.handle("search:content", async (_event, payload: { query: string; limit?
 });
 
 ipcMain.handle("ui:listDisplaySources", async () => {
-  const sources = await desktopCapturer.getSources({
-    types: ["screen", "window"],
-    thumbnailSize: { width: 0, height: 0 },
-  });
+  const sources = await getAvailableDisplaySources();
 
   return sources.map((source) => ({
     id: source.id,

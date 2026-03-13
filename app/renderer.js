@@ -38,6 +38,8 @@ const permissionState = {
 
 let pendingPickerHintTimeout = null;
 
+const SYSTEM_PICKER_VALUE = "__system_picker__";
+
 function persistPermissionState(key, state) {
   if (state === "granted") {
     localStorage.setItem(`memora-permission-${key}`, "granted");
@@ -83,31 +85,27 @@ async function refreshDisplaySources() {
 
   const sources = await window.memora.listDisplaySources();
 
-  if (!sources.length) {
-    sourceSelect.innerHTML = "<option value=\"\">No screen/window sources found</option>";
-    sourceSelect.disabled = true;
-    selectedDisplaySourceId = null;
-    await window.memora.setPreferredDisplaySource(null);
-    return;
-  }
+  const options = [
+    `<option value="${SYSTEM_PICKER_VALUE}">Use system picker (manual choose each start)</option>`,
+    ...sources.map((source) => {
+      const prefix = source.type === "screen" ? "Screen" : "Window";
+      const label = source.name?.trim() ? source.name : "Untitled";
+      return `<option value="${source.id}">${prefix}: ${label}</option>`;
+    }),
+  ];
 
   sourceSelect.disabled = false;
-  sourceSelect.innerHTML = sources
-    .map((source) => {
-      const prefix = source.type === "screen" ? "Screen" : "Window";
-      return `<option value="${source.id}">${prefix}: ${source.name}</option>`;
-    })
-    .join("");
+  sourceSelect.innerHTML = options.join("");
 
-  const fallbackSourceId = sources[0].id;
+  const fallbackSourceId = sources[0]?.id ?? SYSTEM_PICKER_VALUE;
   const resolvedSourceId =
     selectedDisplaySourceId && sources.some((source) => source.id === selectedDisplaySourceId)
       ? selectedDisplaySourceId
       : fallbackSourceId;
 
   sourceSelect.value = resolvedSourceId;
-  selectedDisplaySourceId = resolvedSourceId;
-  await window.memora.setPreferredDisplaySource(resolvedSourceId);
+  selectedDisplaySourceId = resolvedSourceId === SYSTEM_PICKER_VALUE ? null : resolvedSourceId;
+  await window.memora.setPreferredDisplaySource(selectedDisplaySourceId);
 }
 
 async function requestScreenPermission() {
@@ -398,30 +396,32 @@ startBtn.addEventListener("click", async () => {
   const mode = modeSelect.value;
   startBtn.disabled = true;
   stopBtn.disabled = true;
-  setRecordingSignal("pending", "Waiting for permission");
+  setRecordingSignal("pending", "Preparing capture");
   statusText.textContent = "Preparing capture source...";
 
   if (!selectedDisplaySourceId) {
     await refreshDisplaySources();
   }
 
-  if (!selectedDisplaySourceId) {
-    statusText.textContent = "No capture source available. Click Refresh and try again.";
-    setRecordingSignal("idle", "Idle");
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
-    return;
+  const isSystemPickerMode = sourceSelect && sourceSelect.value === SYSTEM_PICKER_VALUE;
+
+  await window.memora.setPreferredDisplaySource(isSystemPickerMode ? null : selectedDisplaySourceId);
+  statusText.textContent = isSystemPickerMode
+    ? "Waiting for system picker selection..."
+    : "Requesting permission for selected source...";
+
+  if (isSystemPickerMode) {
+    // If picker is hidden or slow, provide concrete guidance.
+    pendingPickerHintTimeout = setTimeout(() => {
+      statusText.textContent = "Still waiting for the picker. Press Alt+Tab and choose the share dialog.";
+    }, 3500);
   }
 
-  await window.memora.setPreferredDisplaySource(selectedDisplaySourceId);
-  statusText.textContent = "Requesting permission for selected source...";
-
-  // If picker is hidden or slow, provide concrete guidance.
-  pendingPickerHintTimeout = setTimeout(() => {
-    statusText.textContent = "Still waiting for permission. If prompted, allow screen capture for Memora.";
-  }, 3500);
-
   try {
+    if (isSystemPickerMode) {
+      await window.memora.prepareDisplayPicker();
+    }
+
     mediaStream = await navigator.mediaDevices.getDisplayMedia({
       video: {
         frameRate: 15,
@@ -429,6 +429,10 @@ startBtn.addEventListener("click", async () => {
       // Keep start path reliable. System-audio capture will be added as an explicit option.
       audio: false,
     });
+
+    if (isSystemPickerMode) {
+      await window.memora.restoreAfterDisplayPicker();
+    }
 
     permissionState.screen = "granted";
     persistPermissionState("screen", "granted");
@@ -460,6 +464,10 @@ startBtn.addEventListener("click", async () => {
 
     mediaRecorder.start(1000);
   } catch (error) {
+    if (isSystemPickerMode) {
+      await window.memora.restoreAfterDisplayPicker();
+    }
+
     permissionState.screen = error?.name === "NotAllowedError" ? "denied" : "unknown";
     persistPermissionState("screen", permissionState.screen);
     refreshPermissionUI();
@@ -472,13 +480,17 @@ startBtn.addEventListener("click", async () => {
     startBtn.disabled = false;
     stopBtn.disabled = true;
     console.error(error);
-    clearTimeout(pendingPickerHintTimeout);
-    pendingPickerHintTimeout = null;
+    if (pendingPickerHintTimeout) {
+      clearTimeout(pendingPickerHintTimeout);
+      pendingPickerHintTimeout = null;
+    }
     return;
   }
 
-  clearTimeout(pendingPickerHintTimeout);
-  pendingPickerHintTimeout = null;
+  if (pendingPickerHintTimeout) {
+    clearTimeout(pendingPickerHintTimeout);
+    pendingPickerHintTimeout = null;
+  }
 
   const response = await window.memora.startRecording(mode);
 
@@ -489,7 +501,7 @@ startBtn.addEventListener("click", async () => {
 });
 
 sourceSelect.addEventListener("change", async () => {
-  selectedDisplaySourceId = sourceSelect.value || null;
+  selectedDisplaySourceId = sourceSelect.value === SYSTEM_PICKER_VALUE ? null : sourceSelect.value || null;
   await window.memora.setPreferredDisplaySource(selectedDisplaySourceId);
 });
 
