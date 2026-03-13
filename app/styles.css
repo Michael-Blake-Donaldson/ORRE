@@ -505,6 +505,55 @@ ul {
   margin-top: 8px;
 }
 
+.session-card__transcript-shell {
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: #0b121c;
+  padding: 8px;
+}
+
+.cue-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.cue-item {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 8px;
+  align-items: center;
+  text-align: left;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: #0f1724;
+  color: var(--text);
+}
+
+.cue-item:hover {
+  border-color: #3b4e67;
+}
+
+.cue-item__ts {
+  color: #7df3cf;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+}
+
+.cue-item__source {
+  color: #a7deff;
+  font-size: 12px;
+}
+
+.cue-item__text {
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .chip {
   display: inline-flex;
   align-items: center;

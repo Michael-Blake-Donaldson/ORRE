@@ -7,6 +7,46 @@ const statusText = document.getElementById("libraryStatus");
 const sessionGrid = document.getElementById("librarySessionGrid");
 const dashboardNavBtn = document.querySelector(".nav-item[data-page='dashboard']");
 
+function parseTimestampToSeconds(timestamp) {
+  const match = timestamp.match(/^(\d{2}):(\d{2})$/);
+  if (!match) {
+    return 0;
+  }
+
+  const minutes = Number(match[1]);
+  const seconds = Number(match[2]);
+  return minutes * 60 + seconds;
+}
+
+function extractTranscriptCues(chunks) {
+  return chunks
+    .filter((chunk) => chunk.chunk_type === "transcript")
+    .map((chunk) => chunk.content.trim())
+    .map((line) => {
+      const typed = line.match(/^\[(AUDIO|VISUAL)\s+(\d{2}:\d{2})\]\s*(.*)$/i);
+      if (typed) {
+        return {
+          source: typed[1].toLowerCase(),
+          timestamp: typed[2],
+          text: typed[3] || "",
+        };
+      }
+
+      const basic = line.match(/^\[(\d{2}:\d{2})\]\s*(.*)$/);
+      if (basic) {
+        return {
+          source: "visual",
+          timestamp: basic[1],
+          text: basic[2] || "",
+        };
+      }
+
+      return null;
+    })
+    .filter((cue) => Boolean(cue) && cue.text.length > 0)
+    .slice(0, 8);
+}
+
 function getMemoraApi() {
   if (window.memora) {
     return window.memora;
@@ -63,6 +103,33 @@ function stopOtherLibraryPlayers(exceptSessionId = null) {
   });
 }
 
+async function ensureCardReplayPlayerLoaded(api, sessionId, card, autoplay = false) {
+  const status = card?.querySelector("[data-role='player-status']");
+  const player = card?.querySelector("video[data-role='session-player']");
+
+  if (!status || !player) {
+    return null;
+  }
+
+  const replayResponse = await api.getSessionReplaySource(sessionId);
+  if (!replayResponse.ok) {
+    status.textContent = "Replay file unavailable.";
+    return null;
+  }
+
+  stopOtherLibraryPlayers(sessionId);
+
+  if (player.src !== replayResponse.fileUrl) {
+    player.src = replayResponse.fileUrl;
+  }
+
+  if (autoplay) {
+    await player.play();
+  }
+
+  return { player, status };
+}
+
 function renderSessions(sessions, categories) {
   if (!sessionGrid) {
     return;
@@ -100,6 +167,13 @@ function renderSessions(sessions, categories) {
               <span class="session-card__meta" data-role="player-status">${session.file_path ? "Replay ready." : "No saved video file."}</span>
             </div>
             <video class="session-card__player" data-role="session-player" controls preload="metadata"></video>
+          </div>
+          <div class="session-card__transcript-shell">
+            <div class="session-card__row">
+              <button class="button button--mini" data-role="load-cues" ${session.file_path ? "" : "disabled"}>Load Transcript Cues</button>
+              <span class="session-card__meta">Click a cue to seek video</span>
+            </div>
+            <div class="cue-list" data-role="cue-list">No cues loaded.</div>
           </div>
         </article>
       `;
@@ -181,31 +255,75 @@ async function loadLibrary() {
     button.addEventListener("click", async () => {
       const card = button.closest(".session-card");
       const sessionId = card?.getAttribute("data-session-id");
-      const status = card?.querySelector("[data-role='player-status']");
-      const player = card?.querySelector("video[data-role='session-player']");
-
-      if (!sessionId || !status || !player) {
+      if (!sessionId || !card) {
         return;
-      }
-
-      const replayResponse = await api.getSessionReplaySource(sessionId);
-      if (!replayResponse.ok) {
-        status.textContent = "Replay file unavailable.";
-        return;
-      }
-
-      stopOtherLibraryPlayers(sessionId);
-
-      if (player.src !== replayResponse.fileUrl) {
-        player.src = replayResponse.fileUrl;
       }
 
       try {
-        await player.play();
-        status.textContent = "Playing.";
+        const loaded = await ensureCardReplayPlayerLoaded(api, sessionId, card, true);
+        if (!loaded) {
+          return;
+        }
+
+        loaded.status.textContent = "Playing.";
       } catch {
-        status.textContent = "Could not start playback.";
+        const status = card.querySelector("[data-role='player-status']");
+        if (status) {
+          status.textContent = "Could not start playback.";
+        }
       }
+    });
+  });
+
+  sessionGrid.querySelectorAll("[data-role='load-cues']").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const card = button.closest(".session-card");
+      const sessionId = card?.getAttribute("data-session-id");
+      const cueList = card?.querySelector("[data-role='cue-list']");
+
+      if (!sessionId || !card || !cueList) {
+        return;
+      }
+
+      cueList.textContent = "Loading transcript cues...";
+
+      const detail = await api.getSessionDetail(sessionId);
+      const cues = extractTranscriptCues(detail.chunks || []);
+
+      if (!cues.length) {
+        cueList.textContent = "No transcript cues found yet. Run processing first.";
+        return;
+      }
+
+      cueList.innerHTML = cues
+        .map((cue) => {
+          const sourceLabel = cue.source === "audio" ? "Audio" : "Visual";
+          return `<button class="cue-item" data-role="cue-item" data-ts="${cue.timestamp}"><span class="cue-item__ts">${cue.timestamp}</span><span class="cue-item__source">${sourceLabel}</span><span class="cue-item__text">${cue.text}</span></button>`;
+        })
+        .join("");
+
+      cueList.querySelectorAll("[data-role='cue-item']").forEach((cueButton) => {
+        cueButton.addEventListener("click", async () => {
+          const timestamp = cueButton.getAttribute("data-ts") || "00:00";
+          const seconds = parseTimestampToSeconds(timestamp);
+
+          try {
+            const loaded = await ensureCardReplayPlayerLoaded(api, sessionId, card, false);
+            if (!loaded) {
+              return;
+            }
+
+            loaded.player.currentTime = seconds;
+            await loaded.player.play();
+            loaded.status.textContent = `Playing from ${timestamp}.`;
+          } catch {
+            const status = card.querySelector("[data-role='player-status']");
+            if (status) {
+              status.textContent = "Could not jump to transcript cue.";
+            }
+          }
+        });
+      });
     });
   });
 }
