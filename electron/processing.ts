@@ -1,4 +1,5 @@
 import { MemoraStore } from "./db.js";
+import { transcribeVideoAudio } from "./asr.js";
 import { cleanupExtractedFrames, extractFramesFromVideo, runOcrOnFrames } from "./ocr.js";
 import { buildTranscriptFromOcr } from "./transcript.js";
 
@@ -79,8 +80,28 @@ export class ProcessingQueue {
     });
 
     await this.runSingleJob(task.sessionId, "transcript", async () => {
-      const transcriptChunks = buildTranscriptFromOcr(latestOcrChunks);
-      this.store.replaceExtractedChunks(task.sessionId, "transcript", transcriptChunks);
+      let audioTranscriptChunks: Array<{ content: string; confidence: number }> = [];
+
+      try {
+        audioTranscriptChunks = await transcribeVideoAudio(task.filePath, task.sessionId);
+      } catch {
+        // Continue with visual transcript if audio extraction or ASR fails.
+      }
+
+      const visualTranscriptChunks = buildTranscriptFromOcr(latestOcrChunks);
+      const combinedTranscriptChunks = [...audioTranscriptChunks, ...visualTranscriptChunks];
+
+      if (combinedTranscriptChunks.length === 0) {
+        this.store.replaceExtractedChunks(task.sessionId, "transcript", [
+          {
+            content: "[VISUAL 00:00] No transcript data could be extracted from audio or on-screen text.",
+            confidence: 0.35,
+          },
+        ]);
+        return;
+      }
+
+      this.store.replaceExtractedChunks(task.sessionId, "transcript", combinedTranscriptChunks);
     });
   }
 

@@ -8,6 +8,7 @@ This repository currently includes:
 - Secure preload bridge
 - Privacy-safe recording controls (manual start/stop)
 - Basic screen capture to WebM file
+- Local transcript generation via Whisper (audio ASR)
 
 ## Current Phase
 
@@ -19,6 +20,8 @@ Phase 1 foundation and a first Phase 2 capture implementation are complete.
 npm install
 npm run dev
 ```
+
+Note: The first transcript run downloads the Whisper tiny model to local cache, which can take a minute depending on network speed.
 
 ## Build
 

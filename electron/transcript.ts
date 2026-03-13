@@ -47,7 +47,7 @@ export function buildTranscriptFromOcr(ocrChunks: OcrChunk[]): TranscriptChunk[]
   if (!cleaned.length) {
     return [
       {
-        content: "[00:00] No stable transcript segments detected. Try recording clearer speech audio and larger on-screen captions.",
+        content: "[VISUAL 00:00] No stable on-screen text segments detected. Try capturing larger, clearer text in the shared window.",
         confidence: 0.45,
       },
     ];
@@ -56,7 +56,7 @@ export function buildTranscriptFromOcr(ocrChunks: OcrChunk[]): TranscriptChunk[]
   return cleaned.map((chunk, index) => {
     const timestamp = toTimestamp(index * SEGMENT_SECONDS);
     return {
-      content: `[${timestamp}] ${chunk.content}`,
+      content: `[VISUAL ${timestamp}] ${chunk.content}`,
       confidence: chunk.confidence,
     };
   });

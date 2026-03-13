@@ -15,6 +15,9 @@ const sessionSummary = document.getElementById("sessionSummary");
 const filterAllBtn = document.getElementById("filterAllBtn");
 const filterOcrBtn = document.getElementById("filterOcrBtn");
 const filterTranscriptBtn = document.getElementById("filterTranscriptBtn");
+const transcriptFilterAllBtn = document.getElementById("transcriptFilterAllBtn");
+const transcriptFilterAudioBtn = document.getElementById("transcriptFilterAudioBtn");
+const transcriptFilterVisualBtn = document.getElementById("transcriptFilterVisualBtn");
 const copyTranscriptBtn = document.getElementById("copyTranscriptBtn");
 const exportTranscriptBtn = document.getElementById("exportTranscriptBtn");
 const sessionTranscript = document.getElementById("sessionTranscript");
@@ -123,6 +126,7 @@ let activeChunkFilter = "all";
 let currentTranscriptSegments = [];
 let transcriptMatchIndexes = [];
 let transcriptMatchCursor = -1;
+let activeTranscriptSourceFilter = "all";
 
 const permissionState = {
   screen: localStorage.getItem("memora-permission-screen") === "granted" ? "granted" : "unknown",
@@ -323,6 +327,24 @@ function createStatusChip(status) {
   return `<span class="${className}">${status}</span>`;
 }
 
+function setActiveTranscriptSourceFilter(nextFilter) {
+  activeTranscriptSourceFilter = nextFilter;
+
+  const filterMap = [
+    [transcriptFilterAllBtn, "all"],
+    [transcriptFilterAudioBtn, "audio"],
+    [transcriptFilterVisualBtn, "visual"],
+  ];
+
+  filterMap.forEach(([button, value]) => {
+    if (!button) {
+      return;
+    }
+
+    button.classList.toggle("button--primary", value === nextFilter);
+  });
+}
+
 function setActiveChunkFilter(nextFilter) {
   activeChunkFilter = nextFilter;
 
@@ -342,7 +364,9 @@ function setActiveChunkFilter(nextFilter) {
 }
 
 function buildTranscriptText(chunks) {
-  const transcriptLines = extractTranscriptSegments(chunks).map((segment) => `[${segment.timestamp}] ${segment.text}`);
+  const transcriptLines = extractTranscriptSegments(chunks)
+    .filter((segment) => activeTranscriptSourceFilter === "all" || segment.source === activeTranscriptSourceFilter)
+    .map((segment) => `[${segment.source.toUpperCase()} ${segment.timestamp}] ${segment.text}`);
 
   if (!transcriptLines.length) {
     return "Transcript is not ready yet. Save a recording and wait for processing to complete.";
@@ -357,12 +381,31 @@ function extractTranscriptSegments(chunks) {
     .map((chunk) => chunk.content.trim())
     .filter((line) => line.length > 0)
     .map((line, index) => {
-      const match = line.match(/^\[(\d{2}:\d{2})\]\s*(.*)$/);
+      const typedMatch = line.match(/^\[(AUDIO|VISUAL)\s+(\d{2}:\d{2})\]\s*(.*)$/i);
+      if (typedMatch) {
+        return {
+          lineIndex: index,
+          source: typedMatch[1].toLowerCase(),
+          timestamp: typedMatch[2],
+          text: typedMatch[3] || "",
+        };
+      }
+
+      const genericMatch = line.match(/^\[(\d{2}:\d{2})\]\s*(.*)$/);
+      if (genericMatch) {
+        return {
+          lineIndex: index,
+          source: "visual",
+          timestamp: genericMatch[1],
+          text: genericMatch[2] || "",
+        };
+      }
 
       return {
         lineIndex: index,
-        timestamp: match ? match[1] : "00:00",
-        text: match ? match[2] : line,
+        source: "visual",
+        timestamp: "00:00",
+        text: line,
       };
     });
 }
@@ -424,7 +467,7 @@ function refreshTranscriptMatches(query) {
       return;
     }
 
-    const haystack = `${segment.timestamp} ${segment.text}`.toLowerCase();
+    const haystack = `${segment.source} ${segment.timestamp} ${segment.text}`.toLowerCase();
     if (haystack.includes(normalized)) {
       row.classList.add("transcript-line--match");
       transcriptMatchIndexes.push(segment.lineIndex);
@@ -486,15 +529,25 @@ function renderTranscript(detail) {
 
   currentTranscriptSegments = extractTranscriptSegments(detail.chunks);
 
-  if (!currentTranscriptSegments.length) {
+  const visibleTranscriptSegments = currentTranscriptSegments.filter(
+    (segment) => activeTranscriptSourceFilter === "all" || segment.source === activeTranscriptSourceFilter,
+  );
+
+  if (!visibleTranscriptSegments.length) {
     sessionTranscript.textContent = "Transcript is not ready yet. Save a recording and wait for processing to complete.";
-    setTranscriptSearchStatus("No transcript lines available yet.");
+    if (currentTranscriptSegments.length) {
+      setTranscriptSearchStatus("No transcript lines for the selected source filter.");
+    } else {
+      setTranscriptSearchStatus("No transcript lines available yet.");
+    }
     return;
   }
 
-  sessionTranscript.innerHTML = currentTranscriptSegments
+  sessionTranscript.innerHTML = visibleTranscriptSegments
     .map((segment) => {
-      return `<div class="transcript-line" data-line-index="${segment.lineIndex}"><span class="transcript-ts">[${segment.timestamp}]</span><span>${segment.text}</span></div>`;
+      const sourceClass = segment.source === "audio" ? "transcript-source--audio" : "transcript-source--visual";
+      const sourceLabel = segment.source === "audio" ? "Audio" : "Visual";
+      return `<div class="transcript-line" data-line-index="${segment.lineIndex}"><span class="transcript-source ${sourceClass}">${sourceLabel}</span><span class="transcript-ts">[${segment.timestamp}]</span><span>${segment.text}</span></div>`;
     })
     .join("");
 
@@ -1039,6 +1092,27 @@ transcriptClearBtn?.addEventListener("click", () => {
   refreshTranscriptMatches("");
 });
 
+transcriptFilterAllBtn?.addEventListener("click", () => {
+  setActiveTranscriptSourceFilter("all");
+  if (currentSessionDetail) {
+    renderTranscript(currentSessionDetail);
+  }
+});
+
+transcriptFilterAudioBtn?.addEventListener("click", () => {
+  setActiveTranscriptSourceFilter("audio");
+  if (currentSessionDetail) {
+    renderTranscript(currentSessionDetail);
+  }
+});
+
+transcriptFilterVisualBtn?.addEventListener("click", () => {
+  setActiveTranscriptSourceFilter("visual");
+  if (currentSessionDetail) {
+    renderTranscript(currentSessionDetail);
+  }
+});
+
 generateSummaryBtn.addEventListener("click", async () => {
   const api = getMemoraApi();
   if (!api) {
@@ -1098,6 +1172,7 @@ refreshPermissionUI();
 refreshDiagnosticsUI();
 setupNavigation();
 setActiveChunkFilter("all");
+setActiveTranscriptSourceFilter("all");
 refreshDisplaySources().catch((error) => {
   statusText.textContent = "Could not load capture sources.";
   diagnostics.lastCaptureError = error?.name ?? "source-list-failed";

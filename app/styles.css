@@ -101,7 +101,7 @@ body {
 }
 
 .badge--recording {
-  color: #04150f;
+  color: #08251b;
   background: var(--accent);
   border-color: var(--accent);
 }
@@ -122,7 +122,7 @@ body {
 
 .recording-signal--pending {
   color: #ffdca8;
-  border-color: #f0b45a;
+  border-color: #f1a22a;
 }
 
 .recording-signal--recording {
@@ -162,7 +162,7 @@ body {
   }
 
   100% {
-    box-shadow: 0 0 0 0 rgba(43, 191, 144, 0);
+    box-shadow: 0 0 0 0 rgba(43, 191, 144, 0.034);
   }
 }
 
@@ -353,6 +353,27 @@ select {
 .transcript-ts {
   color: #7df3cf;
   margin-right: 8px;
+}
+
+.transcript-source {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  margin-right: 8px;
+  font-size: 11px;
+  letter-spacing: 0.2px;
+}
+
+.transcript-source--audio {
+  border-color: #42b6ff;
+  color: #a7deff;
+}
+
+.transcript-source--visual {
+  border-color: #ffbf66;
+  color: #ffdca8;
 }
 
 .checklist {
