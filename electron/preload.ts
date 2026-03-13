@@ -50,6 +50,12 @@ type SearchResultRow = {
   rank: number;
 };
 
+type DisplaySourceRow = {
+  id: string;
+  name: string;
+  type: "screen" | "window";
+};
+
 const api = {
   getRecordingState: async () => {
     return ipcRenderer.invoke("recording:getState") as Promise<{
@@ -96,6 +102,12 @@ const api = {
   },
   restoreAfterDisplayPicker: async () => {
     return ipcRenderer.invoke("ui:restoreAfterDisplayPicker") as Promise<void>;
+  },
+  listDisplaySources: async () => {
+    return ipcRenderer.invoke("ui:listDisplaySources") as Promise<DisplaySourceRow[]>;
+  },
+  setPreferredDisplaySource: async (sourceId: string | null) => {
+    return ipcRenderer.invoke("ui:setPreferredDisplaySource", sourceId) as Promise<{ ok: boolean }>;
   },
 };
 

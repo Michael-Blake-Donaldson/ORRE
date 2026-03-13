@@ -15,6 +15,7 @@ let mainWindow: BrowserWindow | null = null;
 let recordingMode: RecordingMode = "idle";
 let recordingStartedAt: string | null = null;
 let activeSessionId: string | null = null;
+let preferredDisplaySourceId: string | null = null;
 const store = createDb(app.getPath("userData")) as MemoraStore;
 const processingQueue = new ProcessingQueue(store);
 
@@ -41,7 +42,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  // Use the system picker when available so permission flow feels native.
+  // Route display capture through an app-selected source when provided.
   session.defaultSession.setDisplayMediaRequestHandler(
     async (request, callback) => {
       if (request.videoRequested) {
@@ -50,8 +51,10 @@ app.whenReady().then(() => {
           thumbnailSize: { width: 0, height: 0 },
         });
 
-        // Fallback path for environments without system picker support.
-        const preferredSource = sources.find((source) => source.id.startsWith("screen:")) ?? sources[0];
+        const preferredSource =
+          (preferredDisplaySourceId ? sources.find((source) => source.id === preferredDisplaySourceId) : null) ??
+          sources.find((source) => source.id.startsWith("screen:")) ??
+          sources[0];
 
         if (!preferredSource) {
           callback({});
@@ -67,8 +70,6 @@ app.whenReady().then(() => {
 
       callback({});
     },
-    {
-      useSystemPicker: true,
     },
   );
 
@@ -190,6 +191,24 @@ ipcMain.handle("processing:rerun", async (_event, sessionId: string) => {
 
 ipcMain.handle("search:content", async (_event, payload: { query: string; limit?: number }) => {
   return store.searchExtractedContent(payload.query, payload.limit ?? 25);
+});
+
+ipcMain.handle("ui:listDisplaySources", async () => {
+  const sources = await desktopCapturer.getSources({
+    types: ["screen", "window"],
+    thumbnailSize: { width: 0, height: 0 },
+  });
+
+  return sources.map((source) => ({
+    id: source.id,
+    name: source.name,
+    type: source.id.startsWith("screen:") ? "screen" : "window",
+  }));
+});
+
+ipcMain.handle("ui:setPreferredDisplaySource", async (_event, sourceId: string | null) => {
+  preferredDisplaySourceId = sourceId;
+  return { ok: true };
 });
 
 ipcMain.handle("ui:prepareDisplayPicker", async () => {
