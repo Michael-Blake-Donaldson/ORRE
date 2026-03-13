@@ -24,9 +24,19 @@ let selectedSessionId = null;
 let detailPollInterval = null;
 
 const permissionState = {
-  screen: localStorage.getItem("memora-permission-screen") ?? "unknown",
-  mic: localStorage.getItem("memora-permission-mic") ?? "unknown",
+  screen: localStorage.getItem("memora-permission-screen") === "granted" ? "granted" : "unknown",
+  mic: localStorage.getItem("memora-permission-mic") === "granted" ? "granted" : "unknown",
 };
+
+function persistPermissionState(key, state) {
+  if (state === "granted") {
+    localStorage.setItem(`memora-permission-${key}`, "granted");
+    return;
+  }
+
+  // Do not persist negative states so users are not stuck in a stale "denied" UI.
+  localStorage.removeItem(`memora-permission-${key}`);
+}
 
 function setPermissionStatus(element, state) {
   if (!element) {
@@ -61,12 +71,12 @@ async function requestScreenPermission() {
     const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
     stream.getTracks().forEach((track) => track.stop());
     permissionState.screen = "granted";
-    localStorage.setItem("memora-permission-screen", "granted");
+    persistPermissionState("screen", "granted");
     refreshPermissionUI();
     return true;
-  } catch {
-    permissionState.screen = "denied";
-    localStorage.setItem("memora-permission-screen", "denied");
+  } catch (error) {
+    permissionState.screen = error?.name === "NotAllowedError" ? "denied" : "unknown";
+    persistPermissionState("screen", permissionState.screen);
     refreshPermissionUI();
     return false;
   }
@@ -77,24 +87,15 @@ async function requestMicPermission() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     stream.getTracks().forEach((track) => track.stop());
     permissionState.mic = "granted";
-    localStorage.setItem("memora-permission-mic", "granted");
+    persistPermissionState("mic", "granted");
     refreshPermissionUI();
     return true;
-  } catch {
-    permissionState.mic = "denied";
-    localStorage.setItem("memora-permission-mic", "denied");
+  } catch (error) {
+    permissionState.mic = error?.name === "NotAllowedError" ? "denied" : "unknown";
+    persistPermissionState("mic", permissionState.mic);
     refreshPermissionUI();
     return false;
   }
-}
-
-async function ensureScreenPermission() {
-  if (permissionState.screen === "granted") {
-    return true;
-  }
-
-  statusText.textContent = "Memora needs screen permission. Please allow the prompt.";
-  return requestScreenPermission();
 }
 
 function makeSuggestedFilename(startedAt) {
@@ -302,19 +303,18 @@ async function refreshState() {
 startBtn.addEventListener("click", async () => {
   const mode = modeSelect.value;
 
-  const hasPermission = await ensureScreenPermission();
-  if (!hasPermission) {
-    statusText.textContent = "Screen permission denied. Recording did not start.";
-    return;
-  }
-
   try {
     mediaStream = await navigator.mediaDevices.getDisplayMedia({
       video: {
         frameRate: 15,
       },
-      audio: true,
+      // Keep start path reliable. System-audio capture will be added as an explicit option.
+      audio: false,
     });
+
+    permissionState.screen = "granted";
+    persistPermissionState("screen", "granted");
+    refreshPermissionUI();
 
     recordedChunks = [];
 
@@ -332,7 +332,10 @@ startBtn.addEventListener("click", async () => {
 
     mediaRecorder.start(1000);
   } catch (error) {
-    statusText.textContent = "Could not start screen capture. Please grant permission and try again.";
+    permissionState.screen = error?.name === "NotAllowedError" ? "denied" : "unknown";
+    persistPermissionState("screen", permissionState.screen);
+    refreshPermissionUI();
+    statusText.textContent = "Screen permission denied or capture cancelled. Recording did not start.";
     console.error(error);
     return;
   }

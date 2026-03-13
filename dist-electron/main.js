@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, desktopCapturer, ipcMain, session } from "electron";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { promises as fs } from "node:fs";
@@ -33,6 +33,29 @@ function createWindow() {
     });
 }
 app.whenReady().then(() => {
+    // Use the system picker when available so permission flow feels native.
+    session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
+        if (request.videoRequested) {
+            const sources = await desktopCapturer.getSources({
+                types: ["screen", "window"],
+                thumbnailSize: { width: 0, height: 0 },
+            });
+            // Fallback path for environments without system picker support.
+            const preferredSource = sources.find((source) => source.id.startsWith("screen:")) ?? sources[0];
+            if (!preferredSource) {
+                callback({});
+                return;
+            }
+            callback({
+                video: preferredSource,
+                audio: request.audioRequested ? "loopback" : undefined,
+            });
+            return;
+        }
+        callback({});
+    }, {
+        useSystemPicker: true,
+    });
     createWindow();
     app.on("activate", () => {
         if (BrowserWindow.getAllWindows().length === 0) {
