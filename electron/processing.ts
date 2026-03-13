@@ -1,5 +1,6 @@
 import { MemoraStore } from "./db.js";
 import { cleanupExtractedFrames, extractFramesFromVideo, runOcrOnFrames } from "./ocr.js";
+import { buildTranscriptFromOcr } from "./transcript.js";
 
 type ProcessingTask = {
   sessionId: string;
@@ -50,6 +51,7 @@ export class ProcessingQueue {
 
   private async runPipeline(task: ProcessingTask) {
     this.store.queueProcessingJobs(task.sessionId);
+    let latestOcrChunks: Array<{ content: string; confidence: number }> = [];
 
     await this.runSingleJob(task.sessionId, "ocr", async () => {
       let framePaths: string[] = [];
@@ -57,14 +59,16 @@ export class ProcessingQueue {
       try {
         framePaths = await extractFramesFromVideo(task.filePath, task.sessionId);
         const ocrChunks = await runOcrOnFrames(framePaths);
+        latestOcrChunks = ocrChunks;
 
         if (ocrChunks.length === 0) {
-          this.store.replaceExtractedChunks(task.sessionId, "ocr", [
+          latestOcrChunks = [
             {
               content: "OCR completed, but no readable on-screen text was detected in sampled frames.",
               confidence: 0.5,
             },
-          ]);
+          ];
+          this.store.replaceExtractedChunks(task.sessionId, "ocr", latestOcrChunks);
           return;
         }
 
@@ -75,13 +79,8 @@ export class ProcessingQueue {
     });
 
     await this.runSingleJob(task.sessionId, "transcript", async () => {
-      // Placeholder output until ASR engine is integrated in the next step.
-      this.store.replaceExtractedChunks(task.sessionId, "transcript", [
-        {
-          content: "Transcript placeholder: Audio extraction pipeline scaffold is active.",
-          confidence: 0.58,
-        },
-      ]);
+      const transcriptChunks = buildTranscriptFromOcr(latestOcrChunks);
+      this.store.replaceExtractedChunks(task.sessionId, "transcript", transcriptChunks);
     });
   }
 

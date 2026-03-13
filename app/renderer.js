@@ -12,6 +12,12 @@ const recentSessions = document.getElementById("recentSessions");
 const rerunBtn = document.getElementById("rerunBtn");
 const generateSummaryBtn = document.getElementById("generateSummaryBtn");
 const sessionSummary = document.getElementById("sessionSummary");
+const filterAllBtn = document.getElementById("filterAllBtn");
+const filterOcrBtn = document.getElementById("filterOcrBtn");
+const filterTranscriptBtn = document.getElementById("filterTranscriptBtn");
+const copyTranscriptBtn = document.getElementById("copyTranscriptBtn");
+const exportTranscriptBtn = document.getElementById("exportTranscriptBtn");
+const sessionTranscript = document.getElementById("sessionTranscript");
 const sessionDetailTitle = document.getElementById("sessionDetailTitle");
 const sessionDetailSubtitle = document.getElementById("sessionDetailSubtitle");
 const processingJobs = document.getElementById("processingJobs");
@@ -107,6 +113,8 @@ let detailPollInterval = null;
 let recordingStartedMs = null;
 let recordingTimerInterval = null;
 let selectedDisplaySourceId = null;
+let currentSessionDetail = null;
+let activeChunkFilter = "all";
 
 const permissionState = {
   screen: localStorage.getItem("memora-permission-screen") === "granted" ? "granted" : "unknown",
@@ -307,6 +315,66 @@ function createStatusChip(status) {
   return `<span class="${className}">${status}</span>`;
 }
 
+function setActiveChunkFilter(nextFilter) {
+  activeChunkFilter = nextFilter;
+
+  const filterMap = [
+    [filterAllBtn, "all"],
+    [filterOcrBtn, "ocr"],
+    [filterTranscriptBtn, "transcript"],
+  ];
+
+  filterMap.forEach(([button, value]) => {
+    if (!button) {
+      return;
+    }
+
+    button.classList.toggle("button--primary", value === nextFilter);
+  });
+}
+
+function buildTranscriptText(chunks) {
+  const transcriptLines = chunks
+    .filter((chunk) => chunk.chunk_type === "transcript")
+    .map((chunk) => chunk.content.trim())
+    .filter((line) => line.length > 0);
+
+  if (!transcriptLines.length) {
+    return "Transcript is not ready yet. Save a recording and wait for processing to complete.";
+  }
+
+  return transcriptLines.join("\n");
+}
+
+function renderExtractedChunksList(chunks) {
+  if (!extractedChunks) {
+    return;
+  }
+
+  const filtered =
+    activeChunkFilter === "all" ? chunks : chunks.filter((chunk) => chunk.chunk_type === activeChunkFilter);
+
+  if (!filtered.length) {
+    extractedChunks.innerHTML = "<li>No chunks match the selected filter yet.</li>";
+    return;
+  }
+
+  extractedChunks.innerHTML = filtered
+    .map((chunk) => {
+      const confidence = Math.round(chunk.confidence * 100);
+      return `<li><div class="meta">${chunk.chunk_type} • ${confidence}% confidence</div><div>${chunk.content}</div></li>`;
+    })
+    .join("");
+}
+
+function renderTranscript(detail) {
+  if (!sessionTranscript) {
+    return;
+  }
+
+  sessionTranscript.textContent = buildTranscriptText(detail.chunks);
+}
+
 function renderSessions(rows) {
   if (!recentSessions) {
     return;
@@ -403,11 +471,16 @@ async function runSearch() {
 }
 
 function renderSessionDetail(detail) {
+  currentSessionDetail = detail;
+
   if (!detail.session) {
     sessionDetailTitle.textContent = "Session Detail";
     sessionDetailSubtitle.textContent = "Session not found.";
     processingJobs.innerHTML = "<li>No jobs found.</li>";
     extractedChunks.innerHTML = "<li>No extracted chunks found.</li>";
+    if (sessionTranscript) {
+      sessionTranscript.textContent = "No transcript generated yet.";
+    }
     rerunBtn.disabled = true;
     stopDetailPolling();
     return;
@@ -435,16 +508,8 @@ function renderSessionDetail(detail) {
       .join("");
   }
 
-  if (!detail.chunks.length) {
-    extractedChunks.innerHTML = "<li>No extracted text yet.</li>";
-  } else {
-    extractedChunks.innerHTML = detail.chunks
-      .map((chunk) => {
-        const confidence = Math.round(chunk.confidence * 100);
-        return `<li><div class="meta">${chunk.chunk_type} • ${confidence}% confidence</div><div>${chunk.content}</div></li>`;
-      })
-      .join("");
-  }
+  renderExtractedChunksList(detail.chunks);
+  renderTranscript(detail);
 
   const hasActiveJobs = detail.jobs.some((job) => job.status === "queued" || job.status === "running");
   if (hasActiveJobs) {
@@ -749,6 +814,57 @@ rerunBtn.addEventListener("click", async () => {
   await refreshSelectedSessionDetail();
 });
 
+filterAllBtn?.addEventListener("click", () => {
+  setActiveChunkFilter("all");
+  if (currentSessionDetail) {
+    renderExtractedChunksList(currentSessionDetail.chunks);
+  }
+});
+
+filterOcrBtn?.addEventListener("click", () => {
+  setActiveChunkFilter("ocr");
+  if (currentSessionDetail) {
+    renderExtractedChunksList(currentSessionDetail.chunks);
+  }
+});
+
+filterTranscriptBtn?.addEventListener("click", () => {
+  setActiveChunkFilter("transcript");
+  if (currentSessionDetail) {
+    renderExtractedChunksList(currentSessionDetail.chunks);
+  }
+});
+
+copyTranscriptBtn?.addEventListener("click", async () => {
+  if (!currentSessionDetail) {
+    statusText.textContent = "Select a session first to copy its transcript.";
+    return;
+  }
+
+  const transcriptText = buildTranscriptText(currentSessionDetail.chunks);
+  await navigator.clipboard.writeText(transcriptText);
+  statusText.textContent = "Transcript copied to clipboard.";
+});
+
+exportTranscriptBtn?.addEventListener("click", () => {
+  if (!currentSessionDetail?.session) {
+    statusText.textContent = "Select a session first to export its transcript.";
+    return;
+  }
+
+  const transcriptText = buildTranscriptText(currentSessionDetail.chunks);
+  const blob = new Blob([transcriptText], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `memora-transcript-${currentSessionDetail.session.id.slice(0, 8)}.txt`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  statusText.textContent = "Transcript exported as .txt.";
+});
+
 generateSummaryBtn.addEventListener("click", async () => {
   const api = getMemoraApi();
   if (!api) {
@@ -807,6 +923,7 @@ refreshSessions().catch((error) => {
 refreshPermissionUI();
 refreshDiagnosticsUI();
 setupNavigation();
+setActiveChunkFilter("all");
 refreshDisplaySources().catch((error) => {
   statusText.textContent = "Could not load capture sources.";
   diagnostics.lastCaptureError = error?.name ?? "source-list-failed";

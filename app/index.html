@@ -147,10 +147,26 @@
               </div>
 
               <div>
-                <h3>Extracted Chunks (Placeholder)</h3>
+                <div class="panel-header">
+                  <h3>Extracted Chunks</h3>
+                  <div class="button-row button-row--compact">
+                    <button id="filterAllBtn" class="button button--mini">All</button>
+                    <button id="filterOcrBtn" class="button button--mini">OCR</button>
+                    <button id="filterTranscriptBtn" class="button button--mini">Transcript</button>
+                  </div>
+                </div>
                 <ul id="extractedChunks" class="session-list"></ul>
               </div>
             </div>
+
+            <div class="panel-header transcript-header">
+              <h3>Polished Transcript</h3>
+              <div class="button-row button-row--compact">
+                <button id="copyTranscriptBtn" class="button button--mini">Copy</button>
+                <button id="exportTranscriptBtn" class="button button--mini">Export .txt</button>
+              </div>
+            </div>
+            <div id="sessionTranscript" class="summary-output transcript-output">No transcript generated yet.</div>
           </article>
 
           <article id="settingsPanel" class="panel panel--wide">

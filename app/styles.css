@@ -270,6 +270,10 @@ select {
   margin: 16px 0;
 }
 
+.button-row--compact {
+  margin: 0;
+}
+
 .button {
   border: 1px solid var(--panel-border);
   border-radius: 10px;
@@ -288,6 +292,11 @@ select {
   background: #1f7b62;
 }
 
+.button--mini {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
 .status {
   color: var(--muted);
   margin-bottom: 0;
@@ -301,6 +310,16 @@ select {
   padding: 12px;
   line-height: 1.45;
   white-space: pre-wrap;
+}
+
+.transcript-header {
+  margin-top: 16px;
+}
+
+.transcript-output {
+  font-family: Consolas, "Courier New", monospace;
+  max-height: 260px;
+  overflow: auto;
 }
 
 .checklist {

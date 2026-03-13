@@ -1,4 +1,5 @@
 import { cleanupExtractedFrames, extractFramesFromVideo, runOcrOnFrames } from "./ocr.js";
+import { buildTranscriptFromOcr } from "./transcript.js";
 export class ProcessingQueue {
     store;
     queue = [];
@@ -37,18 +38,21 @@ export class ProcessingQueue {
     }
     async runPipeline(task) {
         this.store.queueProcessingJobs(task.sessionId);
+        let latestOcrChunks = [];
         await this.runSingleJob(task.sessionId, "ocr", async () => {
             let framePaths = [];
             try {
                 framePaths = await extractFramesFromVideo(task.filePath, task.sessionId);
                 const ocrChunks = await runOcrOnFrames(framePaths);
+                latestOcrChunks = ocrChunks;
                 if (ocrChunks.length === 0) {
-                    this.store.replaceExtractedChunks(task.sessionId, "ocr", [
+                    latestOcrChunks = [
                         {
                             content: "OCR completed, but no readable on-screen text was detected in sampled frames.",
                             confidence: 0.5,
                         },
-                    ]);
+                    ];
+                    this.store.replaceExtractedChunks(task.sessionId, "ocr", latestOcrChunks);
                     return;
                 }
                 this.store.replaceExtractedChunks(task.sessionId, "ocr", ocrChunks);
@@ -58,13 +62,8 @@ export class ProcessingQueue {
             }
         });
         await this.runSingleJob(task.sessionId, "transcript", async () => {
-            // Placeholder output until ASR engine is integrated in the next step.
-            this.store.replaceExtractedChunks(task.sessionId, "transcript", [
-                {
-                    content: "Transcript placeholder: Audio extraction pipeline scaffold is active.",
-                    confidence: 0.58,
-                },
-            ]);
+            const transcriptChunks = buildTranscriptFromOcr(latestOcrChunks);
+            this.store.replaceExtractedChunks(task.sessionId, "transcript", transcriptChunks);
         });
     }
     async runSingleJob(sessionId, jobType, callback) {
