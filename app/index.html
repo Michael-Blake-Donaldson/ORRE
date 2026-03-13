@@ -73,6 +73,26 @@
             <h2>Recent Sessions</h2>
             <ul id="recentSessions" class="session-list"></ul>
           </article>
+
+          <article class="panel panel--wide">
+            <div class="panel-header">
+              <h2 id="sessionDetailTitle">Session Detail</h2>
+              <button id="rerunBtn" class="button" disabled>Rerun Processing</button>
+            </div>
+            <p id="sessionDetailSubtitle" class="status">Select a session to inspect processing jobs and extracted data.</p>
+
+            <div class="detail-grid">
+              <div>
+                <h3>Processing Jobs</h3>
+                <ul id="processingJobs" class="session-list"></ul>
+              </div>
+
+              <div>
+                <h3>Extracted Chunks (Placeholder)</h3>
+                <ul id="extractedChunks" class="session-list"></ul>
+              </div>
+            </div>
+          </article>
         </section>
       </main>
     </div>

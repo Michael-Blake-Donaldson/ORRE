@@ -4,14 +4,42 @@ const modeSelect = document.getElementById("modeSelect");
 const startBtn = document.getElementById("startBtn");
 const stopBtn = document.getElementById("stopBtn");
 const recentSessions = document.getElementById("recentSessions");
+const rerunBtn = document.getElementById("rerunBtn");
+const sessionDetailTitle = document.getElementById("sessionDetailTitle");
+const sessionDetailSubtitle = document.getElementById("sessionDetailSubtitle");
+const processingJobs = document.getElementById("processingJobs");
+const extractedChunks = document.getElementById("extractedChunks");
 
 let mediaRecorder = null;
 let mediaStream = null;
 let recordedChunks = [];
+let selectedSessionId = null;
+let detailPollInterval = null;
 
 function makeSuggestedFilename(startedAt) {
   const safeDate = new Date(startedAt).toISOString().replaceAll(":", "-");
   return `memora-session-${safeDate}.webm`;
+}
+
+function stopDetailPolling() {
+  if (detailPollInterval) {
+    clearInterval(detailPollInterval);
+    detailPollInterval = null;
+  }
+}
+
+function startDetailPolling() {
+  stopDetailPolling();
+
+  // Poll only for active jobs to avoid unnecessary IPC chatter.
+  detailPollInterval = setInterval(() => {
+    void refreshSelectedSessionDetail();
+  }, 1500);
+}
+
+function createStatusChip(status) {
+  const className = `chip chip--${status}`;
+  return `<span class="${className}">${status}</span>`;
 }
 
 function renderSessions(rows) {
@@ -30,15 +58,96 @@ function renderSessions(rows) {
       const mode = row.mode;
       const status = row.status;
       const file = row.file_path ? `Saved: ${row.file_path}` : "No file saved yet";
+      const isActiveClass = selectedSessionId === row.id ? "active" : "";
 
-      return `<li><div class=\"meta\">${mode} • ${status} • ${started}</div><div>${file}</div></li>`;
+      return `<li class="${isActiveClass}" data-session-id="${row.id}"><div class="meta">${mode} • ${started} ${createStatusChip(status)}</div><div>${file}</div></li>`;
     })
     .join("");
+
+  recentSessions.querySelectorAll("li[data-session-id]").forEach((item) => {
+    item.addEventListener("click", () => {
+      const sessionId = item.getAttribute("data-session-id");
+      if (sessionId) {
+        void selectSession(sessionId);
+      }
+    });
+  });
 }
 
 async function refreshSessions() {
   const rows = await window.memora.listSessions();
   renderSessions(rows);
+
+  if (!selectedSessionId && rows.length > 0) {
+    await selectSession(rows[0].id);
+  }
+}
+
+function renderSessionDetail(detail) {
+  if (!detail.session) {
+    sessionDetailTitle.textContent = "Session Detail";
+    sessionDetailSubtitle.textContent = "Session not found.";
+    processingJobs.innerHTML = "<li>No jobs found.</li>";
+    extractedChunks.innerHTML = "<li>No extracted chunks found.</li>";
+    rerunBtn.disabled = true;
+    stopDetailPolling();
+    return;
+  }
+
+  const started = new Date(detail.session.started_at).toLocaleString();
+  sessionDetailTitle.textContent = `Session ${detail.session.id.slice(0, 8)}`;
+  sessionDetailSubtitle.textContent = `${detail.session.mode} started ${started}`;
+  rerunBtn.disabled = !detail.session.file_path;
+
+  if (!detail.jobs.length) {
+    processingJobs.innerHTML = "<li>No processing jobs yet. Save a recording to enqueue processing.</li>";
+  } else {
+    processingJobs.innerHTML = detail.jobs
+      .map((job) => {
+        const timing = job.finished_at
+          ? `Finished ${new Date(job.finished_at).toLocaleTimeString()}`
+          : job.started_at
+            ? `Started ${new Date(job.started_at).toLocaleTimeString()}`
+            : "Waiting";
+
+        const error = job.error_message ? `<div>${job.error_message}</div>` : "";
+        return `<li><div class="meta">${job.job_type} ${createStatusChip(job.status)}</div><div>${timing}</div>${error}</li>`;
+      })
+      .join("");
+  }
+
+  if (!detail.chunks.length) {
+    extractedChunks.innerHTML = "<li>No extracted text yet.</li>";
+  } else {
+    extractedChunks.innerHTML = detail.chunks
+      .map((chunk) => {
+        const confidence = Math.round(chunk.confidence * 100);
+        return `<li><div class="meta">${chunk.chunk_type} • ${confidence}% confidence</div><div>${chunk.content}</div></li>`;
+      })
+      .join("");
+  }
+
+  const hasActiveJobs = detail.jobs.some((job) => job.status === "queued" || job.status === "running");
+  if (hasActiveJobs) {
+    startDetailPolling();
+  } else {
+    stopDetailPolling();
+  }
+}
+
+async function refreshSelectedSessionDetail() {
+  if (!selectedSessionId) {
+    return;
+  }
+
+  const detail = await window.memora.getSessionDetail(selectedSessionId);
+  renderSessionDetail(detail);
+}
+
+async function selectSession(sessionId) {
+  selectedSessionId = sessionId;
+  await refreshSessions();
+  await refreshSelectedSessionDetail();
 }
 
 function setRecordingUI(isRecording, mode) {
@@ -82,9 +191,7 @@ startBtn.addEventListener("click", async () => {
       ? "video/webm;codecs=vp9,opus"
       : "video/webm";
 
-    mediaRecorder = new MediaRecorder(mediaStream, {
-      mimeType: supportedMimeType,
-    });
+    mediaRecorder = new MediaRecorder(mediaStream, { mimeType: supportedMimeType });
 
     mediaRecorder.ondataavailable = (event) => {
       if (event.data.size > 0) {
@@ -103,6 +210,8 @@ startBtn.addEventListener("click", async () => {
 
   setRecordingUI(true, response.mode);
   statusText.textContent = `Recording started at ${new Date(response.startedAt).toLocaleTimeString()}.`;
+  await refreshSessions();
+  await selectSession(response.sessionId);
 });
 
 stopBtn.addEventListener("click", async () => {
@@ -126,10 +235,19 @@ stopBtn.addEventListener("click", async () => {
 
   const stopResponse = await window.memora.stopRecording();
 
+  if (!stopResponse.sessionId) {
+    setRecordingUI(false, "idle");
+    statusText.textContent = "Recording stopped, but no session ID was returned.";
+    await refreshSessions();
+    return;
+  }
+
   const buffer = await finalizedBlob.arrayBuffer();
   const bytes = Array.from(new Uint8Array(buffer));
 
+  // For long recordings we will stream chunks to disk in a later phase.
   const saveResponse = await window.memora.saveRecording(
+    stopResponse.sessionId,
     bytes,
     makeSuggestedFilename(stopResponse.startedAt ?? stopResponse.stoppedAt),
   );
@@ -139,11 +257,28 @@ stopBtn.addEventListener("click", async () => {
   if (saveResponse.ok) {
     statusText.textContent = `Saved recording at ${new Date(stopResponse.stoppedAt).toLocaleTimeString()} to ${saveResponse.filePath}.`;
     await refreshSessions();
+    await selectSession(stopResponse.sessionId);
     return;
   }
 
   statusText.textContent = "Recording stopped. Save cancelled.";
   await refreshSessions();
+  await selectSession(stopResponse.sessionId);
+});
+
+rerunBtn.addEventListener("click", async () => {
+  if (!selectedSessionId) {
+    return;
+  }
+
+  const response = await window.memora.rerunProcessing(selectedSessionId);
+  if (!response.ok) {
+    statusText.textContent = "Could not rerun processing for this session.";
+    return;
+  }
+
+  statusText.textContent = "Processing rerun queued.";
+  await refreshSelectedSessionDetail();
 });
 
 refreshState().catch((error) => {
@@ -156,4 +291,8 @@ refreshSessions().catch((error) => {
     recentSessions.innerHTML = "<li>Could not load sessions.</li>";
   }
   console.error(error);
+});
+
+window.addEventListener("beforeunload", () => {
+  stopDetailPolling();
 });
