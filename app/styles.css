@@ -488,6 +488,23 @@ ul {
   width: 100%;
 }
 
+.session-card__player-shell {
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: #0b121c;
+  padding: 8px;
+}
+
+.session-card__player {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+  border: 1px solid #2b3544;
+  background: #03060b;
+  display: block;
+  margin-top: 8px;
+}
+
 .chip {
   display: inline-flex;
   align-items: center;

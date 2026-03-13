@@ -46,6 +46,23 @@ function buildCategoryOptions(categories, selectedCategoryId) {
   ].join("");
 }
 
+function stopOtherLibraryPlayers(exceptSessionId = null) {
+  if (!sessionGrid) {
+    return;
+  }
+
+  sessionGrid.querySelectorAll("video[data-role='session-player']").forEach((player) => {
+    const card = player.closest(".session-card");
+    const sessionId = card?.getAttribute("data-session-id");
+
+    if (exceptSessionId && sessionId === exceptSessionId) {
+      return;
+    }
+
+    player.pause();
+  });
+}
+
 function renderSessions(sessions, categories) {
   if (!sessionGrid) {
     return;
@@ -76,6 +93,13 @@ function renderSessions(sessions, categories) {
           <div class="session-card__row">
             <div></div>
             <button class="button button--mini" data-role="delete-session">Delete</button>
+          </div>
+          <div class="session-card__player-shell">
+            <div class="session-card__row">
+              <button class="button button--mini" data-role="play-session" ${session.file_path ? "" : "disabled"}>Play</button>
+              <span class="session-card__meta" data-role="player-status">${session.file_path ? "Replay ready." : "No saved video file."}</span>
+            </div>
+            <video class="session-card__player" data-role="session-player" controls preload="metadata"></video>
           </div>
         </article>
       `;
@@ -150,6 +174,38 @@ async function loadLibrary() {
 
       statusText.textContent = "Session deleted.";
       await loadLibrary();
+    });
+  });
+
+  sessionGrid.querySelectorAll("[data-role='play-session']").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const card = button.closest(".session-card");
+      const sessionId = card?.getAttribute("data-session-id");
+      const status = card?.querySelector("[data-role='player-status']");
+      const player = card?.querySelector("video[data-role='session-player']");
+
+      if (!sessionId || !status || !player) {
+        return;
+      }
+
+      const replayResponse = await api.getSessionReplaySource(sessionId);
+      if (!replayResponse.ok) {
+        status.textContent = "Replay file unavailable.";
+        return;
+      }
+
+      stopOtherLibraryPlayers(sessionId);
+
+      if (player.src !== replayResponse.fileUrl) {
+        player.src = replayResponse.fileUrl;
+      }
+
+      try {
+        await player.play();
+        status.textContent = "Playing.";
+      } catch {
+        status.textContent = "Could not start playback.";
+      }
     });
   });
 }
