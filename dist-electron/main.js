@@ -4,13 +4,15 @@ import path from "node:path";
 import { promises as fs } from "node:fs";
 import { dialog } from "electron";
 import { createDb } from "./db.js";
+import { ProcessingQueue } from "./processing.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 let mainWindow = null;
 let recordingMode = "idle";
 let recordingStartedAt = null;
 let activeSessionId = null;
-const db = createDb(app.getPath("userData"));
+const store = createDb(app.getPath("userData"));
+const processingQueue = new ProcessingQueue(store);
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1280,
@@ -53,13 +55,10 @@ ipcMain.handle("recording:start", async (_event, mode) => {
     recordingMode = mode;
     recordingStartedAt = new Date().toISOString();
     activeSessionId = crypto.randomUUID();
-    db.prepare(`INSERT INTO sessions (id, mode, started_at, status, created_at)
-      VALUES (@id, @mode, @started_at, @status, @created_at)`).run({
+    store.createSession({
         id: activeSessionId,
-        mode,
-        started_at: recordingStartedAt,
-        status: "recording",
-        created_at: recordingStartedAt,
+        mode: mode,
+        startedAt: recordingStartedAt,
     });
     return {
         ok: true,
@@ -71,22 +70,22 @@ ipcMain.handle("recording:start", async (_event, mode) => {
 ipcMain.handle("recording:stop", async () => {
     recordingMode = "idle";
     const stoppedAt = new Date().toISOString();
-    if (activeSessionId) {
-        db.prepare(`UPDATE sessions
-       SET stopped_at = @stopped_at, status = @status
-       WHERE id = @id`).run({
-            id: activeSessionId,
-            stopped_at: stoppedAt,
-            status: "stopped",
+    const stoppedSessionId = activeSessionId;
+    if (stoppedSessionId) {
+        store.stopSession({
+            id: stoppedSessionId,
+            stoppedAt,
         });
     }
     const response = {
         ok: true,
-        sessionId: activeSessionId,
+        sessionId: stoppedSessionId,
         stoppedAt,
         startedAt: recordingStartedAt,
     };
+    // Reset active pointers once stop is acknowledged.
     recordingStartedAt = null;
+    activeSessionId = null;
     return response;
 });
 ipcMain.handle("recording:save", async (_event, payload) => {
@@ -102,22 +101,26 @@ ipcMain.handle("recording:save", async (_event, payload) => {
         return { ok: false, reason: "cancelled" };
     }
     await fs.writeFile(result.filePath, Buffer.from(payload.bytes));
-    if (activeSessionId) {
-        db.prepare(`UPDATE sessions
-       SET file_path = @file_path, status = @status
-       WHERE id = @id`).run({
-            id: activeSessionId,
-            file_path: result.filePath,
-            status: "saved",
-        });
-    }
-    activeSessionId = null;
+    store.markSessionSaved({
+        id: payload.sessionId,
+        filePath: result.filePath,
+    });
+    // Queue asynchronous extraction work so UI is responsive.
+    processingQueue.enqueue({ sessionId: payload.sessionId, filePath: result.filePath });
     return { ok: true, filePath: result.filePath };
 });
 ipcMain.handle("sessions:list", async () => {
-    const rows = db.prepare(`SELECT id, mode, started_at, stopped_at, file_path, status, created_at
-     FROM sessions
-     ORDER BY started_at DESC
-     LIMIT 20`).all();
+    const rows = store.listSessions(20);
     return rows;
+});
+ipcMain.handle("sessions:getDetail", async (_event, sessionId) => {
+    return store.getSessionDetail(sessionId);
+});
+ipcMain.handle("processing:rerun", async (_event, sessionId) => {
+    const session = store.getSessionById(sessionId);
+    if (!session?.file_path) {
+        return { ok: false, reason: "missing-file" };
+    }
+    processingQueue.enqueue({ sessionId, filePath: session.file_path });
+    return { ok: true };
 });

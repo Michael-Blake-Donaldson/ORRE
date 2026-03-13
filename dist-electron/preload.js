@@ -9,11 +9,17 @@ const api = {
     stopRecording: async () => {
         return ipcRenderer.invoke("recording:stop");
     },
-    saveRecording: async (bytes, suggestedName) => {
-        return ipcRenderer.invoke("recording:save", { bytes, suggestedName });
+    saveRecording: async (sessionId, bytes, suggestedName) => {
+        return ipcRenderer.invoke("recording:save", { sessionId, bytes, suggestedName });
     },
     listSessions: async () => {
         return ipcRenderer.invoke("sessions:list");
+    },
+    getSessionDetail: async (sessionId) => {
+        return ipcRenderer.invoke("sessions:getDetail", sessionId);
+    },
+    rerunProcessing: async (sessionId) => {
+        return ipcRenderer.invoke("processing:rerun", sessionId);
     },
 };
 contextBridge.exposeInMainWorld("memora", api);
