@@ -156,3 +156,7 @@ ipcMain.handle("processing:rerun", async (_event, sessionId: string) => {
   processingQueue.enqueue({ sessionId, filePath: session.file_path });
   return { ok: true };
 });
+
+ipcMain.handle("search:content", async (_event, payload: { query: string; limit?: number }) => {
+  return store.searchExtractedContent(payload.query, payload.limit ?? 25);
+});

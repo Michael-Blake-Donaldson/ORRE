@@ -9,12 +9,93 @@ const sessionDetailTitle = document.getElementById("sessionDetailTitle");
 const sessionDetailSubtitle = document.getElementById("sessionDetailSubtitle");
 const processingJobs = document.getElementById("processingJobs");
 const extractedChunks = document.getElementById("extractedChunks");
+const grantScreenBtn = document.getElementById("grantScreenBtn");
+const grantMicBtn = document.getElementById("grantMicBtn");
+const screenPermissionStatus = document.getElementById("screenPermissionStatus");
+const micPermissionStatus = document.getElementById("micPermissionStatus");
+const searchInput = document.getElementById("searchInput");
+const searchBtn = document.getElementById("searchBtn");
+const searchResults = document.getElementById("searchResults");
 
 let mediaRecorder = null;
 let mediaStream = null;
 let recordedChunks = [];
 let selectedSessionId = null;
 let detailPollInterval = null;
+
+const permissionState = {
+  screen: localStorage.getItem("memora-permission-screen") ?? "unknown",
+  mic: localStorage.getItem("memora-permission-mic") ?? "unknown",
+};
+
+function setPermissionStatus(element, state) {
+  if (!element) {
+    return;
+  }
+
+  element.classList.remove("status-inline--ok", "status-inline--warn", "status-inline--error");
+
+  if (state === "granted") {
+    element.textContent = "Granted";
+    element.classList.add("status-inline--ok");
+    return;
+  }
+
+  if (state === "denied") {
+    element.textContent = "Denied";
+    element.classList.add("status-inline--error");
+    return;
+  }
+
+  element.textContent = "Unknown";
+  element.classList.add("status-inline--warn");
+}
+
+function refreshPermissionUI() {
+  setPermissionStatus(screenPermissionStatus, permissionState.screen);
+  setPermissionStatus(micPermissionStatus, permissionState.mic);
+}
+
+async function requestScreenPermission() {
+  try {
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+    stream.getTracks().forEach((track) => track.stop());
+    permissionState.screen = "granted";
+    localStorage.setItem("memora-permission-screen", "granted");
+    refreshPermissionUI();
+    return true;
+  } catch {
+    permissionState.screen = "denied";
+    localStorage.setItem("memora-permission-screen", "denied");
+    refreshPermissionUI();
+    return false;
+  }
+}
+
+async function requestMicPermission() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    stream.getTracks().forEach((track) => track.stop());
+    permissionState.mic = "granted";
+    localStorage.setItem("memora-permission-mic", "granted");
+    refreshPermissionUI();
+    return true;
+  } catch {
+    permissionState.mic = "denied";
+    localStorage.setItem("memora-permission-mic", "denied");
+    refreshPermissionUI();
+    return false;
+  }
+}
+
+async function ensureScreenPermission() {
+  if (permissionState.screen === "granted") {
+    return true;
+  }
+
+  statusText.textContent = "Memora needs screen permission. Please allow the prompt.";
+  return requestScreenPermission();
+}
 
 function makeSuggestedFilename(startedAt) {
   const safeDate = new Date(startedAt).toISOString().replaceAll(":", "-");
@@ -81,6 +162,50 @@ async function refreshSessions() {
   if (!selectedSessionId && rows.length > 0) {
     await selectSession(rows[0].id);
   }
+}
+
+function renderSearchResults(rows) {
+  if (!searchResults) {
+    return;
+  }
+
+  if (!rows.length) {
+    searchResults.innerHTML = "<li>No matching extracted content found.</li>";
+    return;
+  }
+
+  searchResults.innerHTML = rows
+    .map((row) => {
+      const started = new Date(row.session_started_at).toLocaleString();
+      const confidence = Math.round(row.confidence * 100);
+
+      return `<li data-search-session-id="${row.session_id}"><div class="meta">${row.session_mode} • ${row.chunk_type} • ${confidence}% • ${started}</div><div>${row.content}</div></li>`;
+    })
+    .join("");
+
+  searchResults.querySelectorAll("li[data-search-session-id]").forEach((item) => {
+    item.addEventListener("click", () => {
+      const sessionId = item.getAttribute("data-search-session-id");
+      if (sessionId) {
+        void selectSession(sessionId);
+      }
+    });
+  });
+}
+
+async function runSearch() {
+  if (!searchInput || !searchResults) {
+    return;
+  }
+
+  const query = searchInput.value.trim();
+  if (!query) {
+    searchResults.innerHTML = "<li>Type a query to search OCR and transcript memory.</li>";
+    return;
+  }
+
+  const rows = await window.memora.searchContent(query, 25);
+  renderSearchResults(rows);
 }
 
 function renderSessionDetail(detail) {
@@ -177,6 +302,12 @@ async function refreshState() {
 startBtn.addEventListener("click", async () => {
   const mode = modeSelect.value;
 
+  const hasPermission = await ensureScreenPermission();
+  if (!hasPermission) {
+    statusText.textContent = "Screen permission denied. Recording did not start.";
+    return;
+  }
+
   try {
     mediaStream = await navigator.mediaDevices.getDisplayMedia({
       video: {
@@ -266,6 +397,28 @@ stopBtn.addEventListener("click", async () => {
   await selectSession(stopResponse.sessionId);
 });
 
+grantScreenBtn.addEventListener("click", async () => {
+  const granted = await requestScreenPermission();
+  statusText.textContent = granted ? "Screen permission granted." : "Screen permission denied.";
+});
+
+grantMicBtn.addEventListener("click", async () => {
+  const granted = await requestMicPermission();
+  statusText.textContent = granted ? "Microphone permission granted." : "Microphone permission denied.";
+});
+
+searchBtn.addEventListener("click", async () => {
+  await runSearch();
+});
+
+searchInput.addEventListener("keydown", async (event) => {
+  if (event.key !== "Enter") {
+    return;
+  }
+
+  await runSearch();
+});
+
 rerunBtn.addEventListener("click", async () => {
   if (!selectedSessionId) {
     return;
@@ -292,6 +445,12 @@ refreshSessions().catch((error) => {
   }
   console.error(error);
 });
+
+refreshPermissionUI();
+
+if (searchResults) {
+  searchResults.innerHTML = "<li>Type a query to search OCR and transcript memory.</li>";
+}
 
 window.addEventListener("beforeunload", () => {
   stopDetailPolling();

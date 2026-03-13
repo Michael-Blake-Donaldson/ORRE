@@ -141,6 +141,45 @@ body {
   gap: 8px;
 }
 
+.search-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+input[type="text"] {
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 10px;
+  color: var(--text);
+  background: #0f141e;
+}
+
+.permission-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 10px 0;
+}
+
+.status-inline {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.status-inline--ok {
+  color: #7df3cf;
+}
+
+.status-inline--warn {
+  color: #ffdca8;
+}
+
+.status-inline--error {
+  color: #ffb2be;
+}
+
 select {
   border: 1px solid var(--panel-border);
   border-radius: 10px;

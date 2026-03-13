@@ -58,6 +58,23 @@
             </ul>
           </article>
 
+          <article class="panel">
+            <h2>Permissions</h2>
+            <p>Grant once so capture can start smoothly when you record.</p>
+
+            <div class="permission-row">
+              <button id="grantScreenBtn" class="button">Grant Screen Permission</button>
+              <span id="screenPermissionStatus" class="status-inline">Unknown</span>
+            </div>
+
+            <div class="permission-row">
+              <button id="grantMicBtn" class="button">Grant Microphone Permission</button>
+              <span id="micPermissionStatus" class="status-inline">Unknown</span>
+            </div>
+
+            <p class="status">Windows still asks what screen/window to share each recording for safety.</p>
+          </article>
+
           <article class="panel panel--wide">
             <h2>Build Roadmap Status</h2>
             <div class="checklist">
@@ -72,6 +89,17 @@
           <article class="panel panel--wide">
             <h2>Recent Sessions</h2>
             <ul id="recentSessions" class="session-list session-list--selectable"></ul>
+          </article>
+
+          <article class="panel panel--wide">
+            <div class="panel-header">
+              <h2>Search Memory</h2>
+            </div>
+            <div class="search-row">
+              <input id="searchInput" type="text" placeholder="Search extracted content: error code, tool name, topic..." />
+              <button id="searchBtn" class="button">Search</button>
+            </div>
+            <ul id="searchResults" class="session-list session-list--selectable"></ul>
           </article>
 
           <article class="panel panel--wide">

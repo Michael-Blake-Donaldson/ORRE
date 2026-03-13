@@ -39,6 +39,17 @@ type SessionDetail = {
   chunks: ExtractedChunkRow[];
 };
 
+type SearchResultRow = {
+  chunk_id: string;
+  session_id: string;
+  session_mode: string;
+  session_started_at: string;
+  chunk_type: "ocr" | "transcript";
+  content: string;
+  confidence: number;
+  rank: number;
+};
+
 const api = {
   getRecordingState: async () => {
     return ipcRenderer.invoke("recording:getState") as Promise<{
@@ -76,6 +87,9 @@ const api = {
   },
   rerunProcessing: async (sessionId: string) => {
     return ipcRenderer.invoke("processing:rerun", sessionId) as Promise<{ ok: boolean; reason?: string }>;
+  },
+  searchContent: async (query: string, limit = 25) => {
+    return ipcRenderer.invoke("search:content", { query, limit }) as Promise<SearchResultRow[]>;
   },
 };
 
