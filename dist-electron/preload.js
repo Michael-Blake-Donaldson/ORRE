@@ -12,5 +12,8 @@ const api = {
     saveRecording: async (bytes, suggestedName) => {
         return ipcRenderer.invoke("recording:save", { bytes, suggestedName });
     },
+    listSessions: async () => {
+        return ipcRenderer.invoke("sessions:list");
+    },
 };
 contextBridge.exposeInMainWorld("memora", api);
