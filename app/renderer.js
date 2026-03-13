@@ -33,6 +33,8 @@ const permissionState = {
   mic: localStorage.getItem("memora-permission-mic") === "granted" ? "granted" : "unknown",
 };
 
+let pendingPickerHintTimeout = null;
+
 function persistPermissionState(key, state) {
   if (state === "granted") {
     localStorage.setItem(`memora-permission-${key}`, "granted");
@@ -78,12 +80,12 @@ async function requestScreenPermission() {
     permissionState.screen = "granted";
     persistPermissionState("screen", "granted");
     refreshPermissionUI();
-    return true;
+    return { granted: true, reason: "granted" };
   } catch (error) {
     permissionState.screen = error?.name === "NotAllowedError" ? "denied" : "unknown";
     persistPermissionState("screen", permissionState.screen);
     refreshPermissionUI();
-    return false;
+    return { granted: false, reason: error?.name ?? "unknown" };
   }
 }
 
@@ -94,12 +96,12 @@ async function requestMicPermission() {
     permissionState.mic = "granted";
     persistPermissionState("mic", "granted");
     refreshPermissionUI();
-    return true;
+    return { granted: true, reason: "granted" };
   } catch (error) {
     permissionState.mic = error?.name === "NotAllowedError" ? "denied" : "unknown";
     persistPermissionState("mic", permissionState.mic);
     refreshPermissionUI();
-    return false;
+    return { granted: false, reason: error?.name ?? "unknown" };
   }
 }
 
@@ -360,9 +362,16 @@ startBtn.addEventListener("click", async () => {
   startBtn.disabled = true;
   stopBtn.disabled = true;
   setRecordingSignal("pending", "Waiting for permission");
-  statusText.textContent = "Select a screen/window in the prompt to start recording.";
+  statusText.textContent = "Choose a screen/window in the share picker to start recording.";
+
+  // If picker is hidden or slow, provide concrete guidance.
+  pendingPickerHintTimeout = setTimeout(() => {
+    statusText.textContent = "Still waiting for the picker. Press Alt+Tab and select the screen sharing dialog.";
+  }, 3500);
 
   try {
+    await window.memora.prepareDisplayPicker();
+
     mediaStream = await navigator.mediaDevices.getDisplayMedia({
       video: {
         frameRate: 15,
@@ -370,6 +379,8 @@ startBtn.addEventListener("click", async () => {
       // Keep start path reliable. System-audio capture will be added as an explicit option.
       audio: false,
     });
+
+    await window.memora.restoreAfterDisplayPicker();
 
     permissionState.screen = "granted";
     persistPermissionState("screen", "granted");
@@ -401,16 +412,26 @@ startBtn.addEventListener("click", async () => {
 
     mediaRecorder.start(1000);
   } catch (error) {
+    await window.memora.restoreAfterDisplayPicker();
     permissionState.screen = error?.name === "NotAllowedError" ? "denied" : "unknown";
     persistPermissionState("screen", permissionState.screen);
     refreshPermissionUI();
-    statusText.textContent = "Screen permission denied or capture cancelled. Recording did not start.";
+    if (error?.name === "NotAllowedError") {
+      statusText.textContent = "Screen selection was cancelled or denied. Recording did not start.";
+    } else {
+      statusText.textContent = "Could not open screen share picker. Try again and use Alt+Tab if needed.";
+    }
     setRecordingSignal("idle", "Idle");
     startBtn.disabled = false;
     stopBtn.disabled = true;
     console.error(error);
+    clearTimeout(pendingPickerHintTimeout);
+    pendingPickerHintTimeout = null;
     return;
   }
+
+  clearTimeout(pendingPickerHintTimeout);
+  pendingPickerHintTimeout = null;
 
   const response = await window.memora.startRecording(mode);
 
@@ -481,13 +502,26 @@ stopBtn.addEventListener("click", async () => {
 });
 
 grantScreenBtn.addEventListener("click", async () => {
-  const granted = await requestScreenPermission();
-  statusText.textContent = granted ? "Screen permission granted." : "Screen permission denied.";
+  const result = await requestScreenPermission();
+  statusText.textContent = result.granted
+    ? "Screen permission granted."
+    : "Screen permission was not granted. You can still retry anytime.";
 });
 
 grantMicBtn.addEventListener("click", async () => {
-  const granted = await requestMicPermission();
-  statusText.textContent = granted ? "Microphone permission granted." : "Microphone permission denied.";
+  const result = await requestMicPermission();
+
+  if (result.granted) {
+    statusText.textContent = "Microphone permission granted.";
+    return;
+  }
+
+  if (result.reason === "NotFoundError") {
+    statusText.textContent = "No microphone device detected. This does not block screen recording.";
+    return;
+  }
+
+  statusText.textContent = "Microphone access not granted. Screen recording still works without mic.";
 });
 
 searchBtn.addEventListener("click", async () => {
@@ -537,4 +571,9 @@ if (searchResults) {
 
 window.addEventListener("beforeunload", () => {
   stopDetailPolling();
+
+  if (pendingPickerHintTimeout) {
+    clearTimeout(pendingPickerHintTimeout);
+    pendingPickerHintTimeout = null;
+  }
 });

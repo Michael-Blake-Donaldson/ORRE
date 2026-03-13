@@ -91,6 +91,12 @@ const api = {
   searchContent: async (query: string, limit = 25) => {
     return ipcRenderer.invoke("search:content", { query, limit }) as Promise<SearchResultRow[]>;
   },
+  prepareDisplayPicker: async () => {
+    return ipcRenderer.invoke("ui:prepareDisplayPicker") as Promise<void>;
+  },
+  restoreAfterDisplayPicker: async () => {
+    return ipcRenderer.invoke("ui:restoreAfterDisplayPicker") as Promise<void>;
+  },
 };
 
 contextBridge.exposeInMainWorld("memora", api);

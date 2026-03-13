@@ -191,3 +191,24 @@ ipcMain.handle("processing:rerun", async (_event, sessionId: string) => {
 ipcMain.handle("search:content", async (_event, payload: { query: string; limit?: number }) => {
   return store.searchExtractedContent(payload.query, payload.limit ?? 25);
 });
+
+ipcMain.handle("ui:prepareDisplayPicker", async () => {
+  if (!mainWindow) {
+    return;
+  }
+
+  // Minimizing helps ensure OS picker is visible and not hidden behind the app.
+  mainWindow.minimize();
+});
+
+ipcMain.handle("ui:restoreAfterDisplayPicker", async () => {
+  if (!mainWindow) {
+    return;
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+
+  mainWindow.focus();
+});
