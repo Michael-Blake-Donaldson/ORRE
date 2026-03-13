@@ -21,5 +21,8 @@ const api = {
     rerunProcessing: async (sessionId) => {
         return ipcRenderer.invoke("processing:rerun", sessionId);
     },
+    searchContent: async (query, limit = 25) => {
+        return ipcRenderer.invoke("search:content", { query, limit });
+    },
 };
 contextBridge.exposeInMainWorld("memora", api);

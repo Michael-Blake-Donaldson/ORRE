@@ -52,6 +52,7 @@ export type SearchResultRow = {
 // MemoraStore centralizes DB access and prepared statements for speed and maintainability.
 export class MemoraStore {
   private readonly db: Database.Database;
+  private ftsEnabled = false;
 
   constructor(userDataPath: string) {
     const dbPath = path.join(userDataPath, "memora.db");
@@ -104,19 +105,32 @@ export class MemoraStore {
 
       CREATE INDEX IF NOT EXISTS idx_chunks_session_id ON extracted_chunks(session_id);
       CREATE INDEX IF NOT EXISTS idx_chunks_type ON extracted_chunks(chunk_type);
-
-      CREATE VIRTUAL TABLE IF NOT EXISTS extracted_chunks_fts
-      USING fts5(chunk_id UNINDEXED, session_id UNINDEXED, content, tokenize = 'unicode61 porter');
     `);
 
-    // Backfill FTS rows when upgrading from previous schema versions.
-    this.db.exec(`
-      INSERT INTO extracted_chunks_fts (chunk_id, session_id, content)
-      SELECT ec.id, ec.session_id, ec.content
-      FROM extracted_chunks ec
-      LEFT JOIN extracted_chunks_fts fts ON fts.chunk_id = ec.id
-      WHERE fts.chunk_id IS NULL;
-    `);
+    this.ftsEnabled = this.initializeFtsSafely();
+
+    if (this.ftsEnabled) {
+      // Backfill FTS rows when upgrading from previous schema versions.
+      this.db.exec(`
+        INSERT INTO extracted_chunks_fts (chunk_id, session_id, content)
+        SELECT ec.id, ec.session_id, ec.content
+        FROM extracted_chunks ec
+        LEFT JOIN extracted_chunks_fts fts ON fts.chunk_id = ec.id
+        WHERE fts.chunk_id IS NULL;
+      `);
+    }
+  }
+
+  private initializeFtsSafely(): boolean {
+    try {
+      this.db.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS extracted_chunks_fts
+        USING fts5(chunk_id UNINDEXED, session_id UNINDEXED, content);
+      `);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   createSession(input: { id: string; mode: string; startedAt: string }) {
@@ -251,10 +265,12 @@ export class MemoraStore {
        WHERE session_id = @session_id AND source_job_type = @source_job_type`,
     );
 
-    const clearFts = this.db.prepare(
-      `DELETE FROM extracted_chunks_fts
-       WHERE chunk_id GLOB @chunk_id_pattern`,
-    );
+    const clearFts = this.ftsEnabled
+      ? this.db.prepare(
+          `DELETE FROM extracted_chunks_fts
+           WHERE chunk_id GLOB @chunk_id_pattern`,
+        )
+      : null;
 
     const insert = this.db.prepare(
       `INSERT INTO extracted_chunks
@@ -262,15 +278,19 @@ export class MemoraStore {
        VALUES (@id, @session_id, @chunk_type, @content, @confidence, @source_job_type, @created_at)`,
     );
 
-    const insertFts = this.db.prepare(
-      `INSERT INTO extracted_chunks_fts (chunk_id, session_id, content)
-       VALUES (@chunk_id, @session_id, @content)`,
-    );
+    const insertFts = this.ftsEnabled
+      ? this.db.prepare(
+          `INSERT INTO extracted_chunks_fts (chunk_id, session_id, content)
+           VALUES (@chunk_id, @session_id, @content)`,
+        )
+      : null;
 
     const createdAt = new Date().toISOString();
     const transaction = this.db.transaction(() => {
       clear.run({ session_id: sessionId, source_job_type: jobType });
-      clearFts.run({ chunk_id_pattern: `${sessionId}:${jobType}:*` });
+      if (clearFts) {
+        clearFts.run({ chunk_id_pattern: `${sessionId}:${jobType}:*` });
+      }
 
       rows.forEach((row, index) => {
         const chunkId = `${sessionId}:${jobType}:${index}`;
@@ -285,11 +305,13 @@ export class MemoraStore {
           created_at: createdAt,
         });
 
-        insertFts.run({
-          chunk_id: chunkId,
-          session_id: sessionId,
-          content: row.content,
-        });
+        if (insertFts) {
+          insertFts.run({
+            chunk_id: chunkId,
+            session_id: sessionId,
+            content: row.content,
+          });
+        }
       });
     });
 
@@ -325,47 +347,50 @@ export class MemoraStore {
       return [];
     }
 
-    const ftsQuery = this.db.prepare(
-      `SELECT
-         ec.id AS chunk_id,
-         ec.session_id AS session_id,
-         s.mode AS session_mode,
-         s.started_at AS session_started_at,
-         ec.chunk_type AS chunk_type,
-         ec.content AS content,
-         ec.confidence AS confidence,
-         bm25(extracted_chunks_fts) AS rank
-       FROM extracted_chunks_fts
-       JOIN extracted_chunks ec ON ec.id = extracted_chunks_fts.chunk_id
-       JOIN sessions s ON s.id = ec.session_id
-       WHERE extracted_chunks_fts MATCH ?
-       ORDER BY rank ASC, ec.created_at DESC
-       LIMIT ?`,
-    );
+    if (this.ftsEnabled) {
+      const ftsQuery = this.db.prepare(
+        `SELECT
+           ec.id AS chunk_id,
+           ec.session_id AS session_id,
+           s.mode AS session_mode,
+           s.started_at AS session_started_at,
+           ec.chunk_type AS chunk_type,
+           ec.content AS content,
+           ec.confidence AS confidence,
+           bm25(extracted_chunks_fts) AS rank
+         FROM extracted_chunks_fts
+         JOIN extracted_chunks ec ON ec.id = extracted_chunks_fts.chunk_id
+         JOIN sessions s ON s.id = ec.session_id
+         WHERE extracted_chunks_fts MATCH ?
+         ORDER BY rank ASC, ec.created_at DESC
+         LIMIT ?`,
+      );
 
-    try {
-      return ftsQuery.all(normalized, limit) as SearchResultRow[];
-    } catch {
-      // Fallback keeps search usable when users type unsupported FTS syntax.
-      return this.db
-        .prepare(
-          `SELECT
-             ec.id AS chunk_id,
-             ec.session_id AS session_id,
-             s.mode AS session_mode,
-             s.started_at AS session_started_at,
-             ec.chunk_type AS chunk_type,
-             ec.content AS content,
-             ec.confidence AS confidence,
-             9999.0 AS rank
-           FROM extracted_chunks ec
-           JOIN sessions s ON s.id = ec.session_id
-           WHERE ec.content LIKE '%' || ? || '%'
-           ORDER BY ec.created_at DESC
-           LIMIT ?`,
-        )
-        .all(normalized, limit) as SearchResultRow[];
+      try {
+        return ftsQuery.all(normalized, limit) as SearchResultRow[];
+      } catch {
+        // Continue to LIKE fallback when query syntax is invalid for FTS.
+      }
     }
+
+    return this.db
+      .prepare(
+        `SELECT
+           ec.id AS chunk_id,
+           ec.session_id AS session_id,
+           s.mode AS session_mode,
+           s.started_at AS session_started_at,
+           ec.chunk_type AS chunk_type,
+           ec.content AS content,
+           ec.confidence AS confidence,
+           9999.0 AS rank
+         FROM extracted_chunks ec
+         JOIN sessions s ON s.id = ec.session_id
+         WHERE ec.content LIKE '%' || ? || '%'
+         ORDER BY ec.created_at DESC
+         LIMIT ?`,
+      )
+      .all(normalized, limit) as SearchResultRow[];
   }
 }
 

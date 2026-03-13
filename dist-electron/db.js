@@ -3,6 +3,7 @@ import path from "node:path";
 // MemoraStore centralizes DB access and prepared statements for speed and maintainability.
 export class MemoraStore {
     db;
+    ftsEnabled = false;
     constructor(userDataPath) {
         const dbPath = path.join(userDataPath, "memora.db");
         this.db = new Database(dbPath);
@@ -53,6 +54,29 @@ export class MemoraStore {
       CREATE INDEX IF NOT EXISTS idx_chunks_session_id ON extracted_chunks(session_id);
       CREATE INDEX IF NOT EXISTS idx_chunks_type ON extracted_chunks(chunk_type);
     `);
+        this.ftsEnabled = this.initializeFtsSafely();
+        if (this.ftsEnabled) {
+            // Backfill FTS rows when upgrading from previous schema versions.
+            this.db.exec(`
+        INSERT INTO extracted_chunks_fts (chunk_id, session_id, content)
+        SELECT ec.id, ec.session_id, ec.content
+        FROM extracted_chunks ec
+        LEFT JOIN extracted_chunks_fts fts ON fts.chunk_id = ec.id
+        WHERE fts.chunk_id IS NULL;
+      `);
+        }
+    }
+    initializeFtsSafely() {
+        try {
+            this.db.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS extracted_chunks_fts
+        USING fts5(chunk_id UNINDEXED, session_id UNINDEXED, content);
+      `);
+            return true;
+        }
+        catch {
+            return false;
+        }
     }
     createSession(input) {
         this.db
@@ -148,15 +172,27 @@ export class MemoraStore {
     replaceExtractedChunks(sessionId, jobType, rows) {
         const clear = this.db.prepare(`DELETE FROM extracted_chunks
        WHERE session_id = @session_id AND source_job_type = @source_job_type`);
+        const clearFts = this.ftsEnabled
+            ? this.db.prepare(`DELETE FROM extracted_chunks_fts
+           WHERE chunk_id GLOB @chunk_id_pattern`)
+            : null;
         const insert = this.db.prepare(`INSERT INTO extracted_chunks
        (id, session_id, chunk_type, content, confidence, source_job_type, created_at)
        VALUES (@id, @session_id, @chunk_type, @content, @confidence, @source_job_type, @created_at)`);
+        const insertFts = this.ftsEnabled
+            ? this.db.prepare(`INSERT INTO extracted_chunks_fts (chunk_id, session_id, content)
+           VALUES (@chunk_id, @session_id, @content)`)
+            : null;
         const createdAt = new Date().toISOString();
         const transaction = this.db.transaction(() => {
             clear.run({ session_id: sessionId, source_job_type: jobType });
+            if (clearFts) {
+                clearFts.run({ chunk_id_pattern: `${sessionId}:${jobType}:*` });
+            }
             rows.forEach((row, index) => {
+                const chunkId = `${sessionId}:${jobType}:${index}`;
                 insert.run({
-                    id: `${sessionId}:${jobType}:${index}`,
+                    id: chunkId,
                     session_id: sessionId,
                     chunk_type: jobType,
                     content: row.content,
@@ -164,6 +200,13 @@ export class MemoraStore {
                     source_job_type: jobType,
                     created_at: createdAt,
                 });
+                if (insertFts) {
+                    insertFts.run({
+                        chunk_id: chunkId,
+                        session_id: sessionId,
+                        content: row.content,
+                    });
+                }
             });
         });
         transaction();
@@ -183,6 +226,51 @@ export class MemoraStore {
          ORDER BY created_at DESC`)
             .all(sessionId);
         return { session, jobs, chunks };
+    }
+    searchExtractedContent(query, limit = 25) {
+        const normalized = query.trim();
+        if (!normalized) {
+            return [];
+        }
+        if (this.ftsEnabled) {
+            const ftsQuery = this.db.prepare(`SELECT
+           ec.id AS chunk_id,
+           ec.session_id AS session_id,
+           s.mode AS session_mode,
+           s.started_at AS session_started_at,
+           ec.chunk_type AS chunk_type,
+           ec.content AS content,
+           ec.confidence AS confidence,
+           bm25(extracted_chunks_fts) AS rank
+         FROM extracted_chunks_fts
+         JOIN extracted_chunks ec ON ec.id = extracted_chunks_fts.chunk_id
+         JOIN sessions s ON s.id = ec.session_id
+         WHERE extracted_chunks_fts MATCH ?
+         ORDER BY rank ASC, ec.created_at DESC
+         LIMIT ?`);
+            try {
+                return ftsQuery.all(normalized, limit);
+            }
+            catch {
+                // Continue to LIKE fallback when query syntax is invalid for FTS.
+            }
+        }
+        return this.db
+            .prepare(`SELECT
+           ec.id AS chunk_id,
+           ec.session_id AS session_id,
+           s.mode AS session_mode,
+           s.started_at AS session_started_at,
+           ec.chunk_type AS chunk_type,
+           ec.content AS content,
+           ec.confidence AS confidence,
+           9999.0 AS rank
+         FROM extracted_chunks ec
+         JOIN sessions s ON s.id = ec.session_id
+         WHERE ec.content LIKE '%' || ? || '%'
+         ORDER BY ec.created_at DESC
+         LIMIT ?`)
+            .all(normalized, limit);
     }
 }
 export function createDb(userDataPath) {
