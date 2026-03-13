@@ -5,6 +5,7 @@ import { promises as fs } from "node:fs";
 import { dialog } from "electron";
 import { createDb } from "./db.js";
 import { ProcessingQueue } from "./processing.js";
+import { buildSessionSummary } from "./summary.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 let mainWindow = null;
@@ -161,6 +162,11 @@ ipcMain.handle("processing:rerun", async (_event, sessionId) => {
 });
 ipcMain.handle("search:content", async (_event, payload) => {
     return store.searchExtractedContent(payload.query, payload.limit ?? 25);
+});
+ipcMain.handle("sessions:generateSummary", async (_event, sessionId) => {
+    const detail = store.getSessionDetail(sessionId);
+    const summary = buildSessionSummary(detail.chunks);
+    return summary;
 });
 ipcMain.handle("ui:listDisplaySources", async () => {
     const sources = await getAvailableDisplaySources();

@@ -24,6 +24,9 @@ const api = {
     searchContent: async (query, limit = 25) => {
         return ipcRenderer.invoke("search:content", { query, limit });
     },
+    generateSessionSummary: async (sessionId) => {
+        return ipcRenderer.invoke("sessions:generateSummary", sessionId);
+    },
     prepareDisplayPicker: async () => {
         return ipcRenderer.invoke("ui:prepareDisplayPicker");
     },
