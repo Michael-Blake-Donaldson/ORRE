@@ -47,6 +47,10 @@ const micPermissionStatus = document.getElementById("micPermissionStatus");
 const searchInput = document.getElementById("searchInput");
 const searchBtn = document.getElementById("searchBtn");
 const searchResults = document.getElementById("searchResults");
+const askInput = document.getElementById("askInput");
+const askBtn = document.getElementById("askBtn");
+const askAnswer = document.getElementById("askAnswer");
+const askCitations = document.getElementById("askCitations");
 const navButtons = Array.from(document.querySelectorAll(".nav-item[data-target], .nav-item[data-page]"));
 const diagBridgeLoaded = document.getElementById("diagBridgeLoaded");
 const diagSourceCount = document.getElementById("diagSourceCount");
@@ -714,6 +718,107 @@ async function runSearch() {
   renderSearchResults(rows);
 }
 
+async function loadReplayForSession(sessionId, timestampSeconds = null) {
+  const api = getMemoraApi();
+  if (!api || !replayPlayer) {
+    return false;
+  }
+
+  const replaySource = await api.getSessionReplaySource(sessionId);
+  if (!replaySource.ok) {
+    return false;
+  }
+
+  if (replayPlayer.src !== replaySource.fileUrl) {
+    replayPlayer.src = replaySource.fileUrl;
+  }
+
+  if (timestampSeconds !== null) {
+    replayPlayer.currentTime = Math.max(0, timestampSeconds);
+  }
+
+  await replayPlayer.play();
+  replaySourceSessionId = sessionId;
+  return true;
+}
+
+function renderAskCitations(citations) {
+  if (!askCitations) {
+    return;
+  }
+
+  if (!citations.length) {
+    askCitations.innerHTML = "<li>No citations available for this answer.</li>";
+    return;
+  }
+
+  askCitations.innerHTML = citations
+    .map((citation) => {
+      const confidence = Math.round(citation.confidence * 100);
+      const timestamp = citation.timestampLabel ?? "--:--";
+      return `<li data-citation-session-id="${citation.sessionId}" data-citation-ts="${citation.timestampSeconds ?? ""}"><div class="citation-meta">${citation.chunkType} • ${confidence}% • ${timestamp}</div><div>${citation.content}</div></li>`;
+    })
+    .join("");
+
+  askCitations.querySelectorAll("li[data-citation-session-id]").forEach((item) => {
+    item.addEventListener("click", async () => {
+      const sessionId = item.getAttribute("data-citation-session-id");
+      if (!sessionId) {
+        return;
+      }
+
+      const tsValue = item.getAttribute("data-citation-ts");
+      const timestampSeconds = tsValue ? Number(tsValue) : null;
+
+      await selectSession(sessionId);
+      const started = await loadReplayForSession(sessionId, Number.isFinite(timestampSeconds) ? timestampSeconds : null);
+
+      if (!started) {
+        statusText.textContent = "Citation opened, but replay could not be loaded for this session.";
+        return;
+      }
+
+      statusText.textContent = timestampSeconds !== null ? `Jumped replay to cited timestamp.` : "Opened cited replay.";
+    });
+  });
+}
+
+async function runAskMemora() {
+  const api = getMemoraApi();
+  if (!api || !askInput || !askAnswer) {
+    return;
+  }
+
+  const question = askInput.value.trim();
+  if (!question) {
+    askAnswer.textContent = "Enter a question to ask Memora.";
+    if (askCitations) {
+      askCitations.innerHTML = "<li>No citations available for this answer.</li>";
+    }
+    return;
+  }
+
+  if (askBtn) {
+    askBtn.disabled = true;
+  }
+  askAnswer.textContent = "Thinking...";
+
+  try {
+    const result = await api.askMemora(question, 60);
+    askAnswer.textContent = result.answer;
+    renderAskCitations(result.citations);
+  } catch {
+    askAnswer.textContent = "Ask Memora failed. Try again.";
+    if (askCitations) {
+      askCitations.innerHTML = "<li>No citations available for this answer.</li>";
+    }
+  } finally {
+    if (askBtn) {
+      askBtn.disabled = false;
+    }
+  }
+}
+
 function renderSessionDetail(detail) {
   currentSessionDetail = detail;
 
@@ -1091,6 +1196,18 @@ searchInput.addEventListener("keydown", async (event) => {
   await runSearch();
 });
 
+askBtn?.addEventListener("click", async () => {
+  await runAskMemora();
+});
+
+askInput?.addEventListener("keydown", async (event) => {
+  if (event.key !== "Enter") {
+    return;
+  }
+
+  await runAskMemora();
+});
+
 rerunBtn.addEventListener("click", async () => {
   const api = getMemoraApi();
   if (!api) {
@@ -1454,6 +1571,10 @@ refreshDisplaySources().catch((error) => {
 
 if (searchResults) {
   searchResults.innerHTML = "<li>Type a query to search OCR and transcript memory.</li>";
+}
+
+if (askCitations) {
+  askCitations.innerHTML = "<li>No citations available for this answer.</li>";
 }
 
 window.addEventListener("beforeunload", () => {

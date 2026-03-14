@@ -130,6 +130,18 @@
 
           <article class="panel panel--wide">
             <div class="panel-header">
+              <h2>Ask Memora</h2>
+            </div>
+            <div class="search-row">
+              <input id="askInput" type="text" placeholder="Ask a question across your recordings..." />
+              <button id="askBtn" class="button">Ask</button>
+            </div>
+            <div id="askAnswer" class="summary-output">Ask a question to generate a cited answer.</div>
+            <ul id="askCitations" class="session-list session-list--selectable"></ul>
+          </article>
+
+          <article class="panel panel--wide">
+            <div class="panel-header">
               <h2 id="sessionDetailTitle">Session Detail</h2>
               <button id="rerunBtn" class="button" disabled>Rerun Processing</button>
             </div>

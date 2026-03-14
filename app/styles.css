@@ -318,6 +318,11 @@ select {
   white-space: pre-wrap;
 }
 
+.citation-meta {
+  color: #9fc2eb;
+  font-size: 12px;
+}
+
 .replay-shell {
   margin-top: 12px;
   border: 1px solid var(--panel-border);

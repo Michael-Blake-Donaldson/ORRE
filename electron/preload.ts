@@ -126,6 +126,20 @@ const api = {
   searchContent: async (query: string, limit = 25) => {
     return ipcRenderer.invoke("search:content", { query, limit }) as Promise<SearchResultRow[]>;
   },
+  askMemora: async (question: string, limit = 60) => {
+    return ipcRenderer.invoke("ask:query", { question, limit }) as Promise<{
+      answer: string;
+      citations: Array<{
+        chunkId: string;
+        sessionId: string;
+        chunkType: "ocr" | "transcript";
+        content: string;
+        confidence: number;
+        timestampSeconds: number | null;
+        timestampLabel: string | null;
+      }>;
+    }>;
+  },
   generateSessionSummary: async (sessionId: string) => {
     return ipcRenderer.invoke("sessions:generateSummary", sessionId) as Promise<{
       overview: string;

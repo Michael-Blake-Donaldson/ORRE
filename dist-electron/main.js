@@ -5,6 +5,7 @@ import { promises as fs } from "node:fs";
 import { dialog } from "electron";
 import { createDb } from "./db.js";
 import { ProcessingQueue } from "./processing.js";
+import { buildAskMemoraAnswer } from "./qa.js";
 import { buildSessionSummary } from "./summary.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -194,6 +195,10 @@ ipcMain.handle("categories:delete", async (_event, categoryId) => {
 });
 ipcMain.handle("search:content", async (_event, payload) => {
     return store.searchExtractedContent(payload.query, payload.limit ?? 25);
+});
+ipcMain.handle("ask:query", async (_event, payload) => {
+    const rows = store.searchExtractedContent(payload.question, payload.limit ?? 60);
+    return buildAskMemoraAnswer(payload.question, rows);
 });
 ipcMain.handle("sessions:generateSummary", async (_event, sessionId) => {
     const detail = store.getSessionDetail(sessionId);

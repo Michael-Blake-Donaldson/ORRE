@@ -5,6 +5,7 @@ import { promises as fs } from "node:fs";
 import { dialog } from "electron";
 import { createDb, type MemoraStore, type SessionRow } from "./db.js";
 import { ProcessingQueue } from "./processing.js";
+import { buildAskMemoraAnswer } from "./qa.js";
 import { buildSessionSummary } from "./summary.js";
 
 type RecordingMode = "idle" | "session" | "clip" | "always-on";
@@ -242,6 +243,11 @@ ipcMain.handle("categories:delete", async (_event, categoryId: string) => {
 
 ipcMain.handle("search:content", async (_event, payload: { query: string; limit?: number }) => {
   return store.searchExtractedContent(payload.query, payload.limit ?? 25);
+});
+
+ipcMain.handle("ask:query", async (_event, payload: { question: string; limit?: number }) => {
+  const rows = store.searchExtractedContent(payload.question, payload.limit ?? 60);
+  return buildAskMemoraAnswer(payload.question, rows);
 });
 
 ipcMain.handle("sessions:generateSummary", async (_event, sessionId: string) => {
