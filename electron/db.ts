@@ -523,6 +523,47 @@ export class MemoraStore {
       )
       .all(normalized, limit) as SearchResultRow[];
   }
+
+  listRecentExtractedRows(limit = 120, chunkType?: "ocr" | "transcript"): SearchResultRow[] {
+    if (chunkType) {
+      return this.db
+        .prepare(
+          `SELECT
+             ec.id AS chunk_id,
+             ec.session_id AS session_id,
+             s.mode AS session_mode,
+             s.started_at AS session_started_at,
+             ec.chunk_type AS chunk_type,
+             ec.content AS content,
+             ec.confidence AS confidence,
+             9999.0 AS rank
+           FROM extracted_chunks ec
+           JOIN sessions s ON s.id = ec.session_id
+           WHERE ec.chunk_type = ?
+           ORDER BY ec.created_at DESC
+           LIMIT ?`,
+        )
+        .all(chunkType, limit) as SearchResultRow[];
+    }
+
+    return this.db
+      .prepare(
+        `SELECT
+           ec.id AS chunk_id,
+           ec.session_id AS session_id,
+           s.mode AS session_mode,
+           s.started_at AS session_started_at,
+           ec.chunk_type AS chunk_type,
+           ec.content AS content,
+           ec.confidence AS confidence,
+           9999.0 AS rank
+         FROM extracted_chunks ec
+         JOIN sessions s ON s.id = ec.session_id
+         ORDER BY ec.created_at DESC
+         LIMIT ?`,
+      )
+      .all(limit) as SearchResultRow[];
+  }
 }
 
 export function createDb(userDataPath: string) {

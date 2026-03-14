@@ -10,8 +10,8 @@ type OcrChunk = {
   confidence: number;
 };
 
-const FRAME_INTERVAL_SECONDS = 4;
-const MAX_FRAMES = 8;
+const MAX_FRAMES = 18;
+const UPSCALED_FRAME_INTERVAL_SECONDS = 2;
 const ffmpegPath = ffmpegPathImport as unknown as string | null;
 
 function runFfmpeg(args: string[]) {
@@ -47,7 +47,7 @@ export async function extractFramesFromVideo(videoPath: string, sessionId: strin
     "-i",
     videoPath,
     "-vf",
-    `fps=1/${FRAME_INTERVAL_SECONDS}`,
+    `fps=1/${UPSCALED_FRAME_INTERVAL_SECONDS},scale=iw*2:ih*2:flags=lanczos,eq=contrast=1.18:brightness=0.03,unsharp=5:5:1.0:5:5:0.0`,
     "-vframes",
     String(MAX_FRAMES),
     outputPattern,
@@ -64,20 +64,41 @@ export async function runOcrOnFrames(framePaths: string[]): Promise<OcrChunk[]> 
 
   // Reuse one worker to keep memory and startup overhead lower.
   const worker = await createWorker("eng");
+  await worker.setParameters({
+    tessedit_pageseg_mode: "6",
+    preserve_interword_spaces: "1",
+  });
 
   try {
     const chunks: OcrChunk[] = [];
 
     for (const framePath of framePaths) {
       const result = await worker.recognize(framePath);
-      const text = result.data.text.trim();
+      const lines = Array.isArray(result.data.lines) ? result.data.lines : [];
 
+      if (lines.length > 0) {
+        for (const line of lines) {
+          const text = String(line.text ?? "").replace(/\s+/g, " ").trim();
+          if (text.length < 3 || text.length > 80) {
+            continue;
+          }
+
+          chunks.push({
+            content: text,
+            confidence: Math.max(0, Math.min(1, Number(line.confidence ?? result.data.confidence ?? 50) / 100)),
+          });
+        }
+
+        continue;
+      }
+
+      const text = result.data.text.trim();
       if (!text) {
         continue;
       }
 
       const normalizedText = text.replace(/\s+/g, " ").trim();
-      if (normalizedText.length < 10) {
+      if (normalizedText.length < 8) {
         continue;
       }
 
