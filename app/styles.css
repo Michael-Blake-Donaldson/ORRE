@@ -323,6 +323,22 @@ select {
   font-size: 12px;
 }
 
+.ask-confidence {
+  font-weight: 600;
+}
+
+.ask-confidence--high {
+  color: #7df3cf;
+}
+
+.ask-confidence--medium {
+  color: #ffdca8;
+}
+
+.ask-confidence--low {
+  color: #ffb2be;
+}
+
 .replay-shell {
   margin-top: 12px;
   border: 1px solid var(--panel-border);

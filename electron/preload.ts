@@ -129,6 +129,8 @@ const api = {
   askMemora: async (question: string, limit = 60) => {
     return ipcRenderer.invoke("ask:query", { question, limit }) as Promise<{
       answer: string;
+      confidenceScore: number;
+      confidenceLabel: "low" | "medium" | "high";
       citations: Array<{
         chunkId: string;
         sessionId: string;

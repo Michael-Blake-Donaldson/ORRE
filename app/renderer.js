@@ -49,6 +49,7 @@ const searchBtn = document.getElementById("searchBtn");
 const searchResults = document.getElementById("searchResults");
 const askInput = document.getElementById("askInput");
 const askBtn = document.getElementById("askBtn");
+const askConfidence = document.getElementById("askConfidence");
 const askAnswer = document.getElementById("askAnswer");
 const askCitations = document.getElementById("askCitations");
 const navButtons = Array.from(document.querySelectorAll(".nav-item[data-target], .nav-item[data-page]"));
@@ -783,6 +784,19 @@ function renderAskCitations(citations) {
   });
 }
 
+function renderAskConfidence(confidenceLabel, confidenceScore) {
+  if (!askConfidence) {
+    return;
+  }
+
+  askConfidence.classList.remove("ask-confidence", "ask-confidence--high", "ask-confidence--medium", "ask-confidence--low");
+  askConfidence.classList.add("ask-confidence", `ask-confidence--${confidenceLabel}`);
+
+  const percent = Math.round(Math.max(0, Math.min(1, confidenceScore)) * 100);
+  const label = confidenceLabel.charAt(0).toUpperCase() + confidenceLabel.slice(1);
+  askConfidence.textContent = `Confidence: ${label} (${percent}%)`;
+}
+
 async function runAskMemora() {
   const api = getMemoraApi();
   if (!api || !askInput || !askAnswer) {
@@ -792,6 +806,7 @@ async function runAskMemora() {
   const question = askInput.value.trim();
   if (!question) {
     askAnswer.textContent = "Enter a question to ask Memora.";
+    renderAskConfidence("low", 0);
     if (askCitations) {
       askCitations.innerHTML = "<li>No citations available for this answer.</li>";
     }
@@ -802,13 +817,16 @@ async function runAskMemora() {
     askBtn.disabled = true;
   }
   askAnswer.textContent = "Thinking...";
+  renderAskConfidence("medium", 0.5);
 
   try {
     const result = await api.askMemora(question, 60);
     askAnswer.textContent = result.answer;
+    renderAskConfidence(result.confidenceLabel, result.confidenceScore);
     renderAskCitations(result.citations);
   } catch {
     askAnswer.textContent = "Ask Memora failed. Try again.";
+    renderAskConfidence("low", 0);
     if (askCitations) {
       askCitations.innerHTML = "<li>No citations available for this answer.</li>";
     }
@@ -1576,6 +1594,8 @@ if (searchResults) {
 if (askCitations) {
   askCitations.innerHTML = "<li>No citations available for this answer.</li>";
 }
+
+renderAskConfidence("low", 0);
 
 window.addEventListener("beforeunload", () => {
   stopDetailPolling();

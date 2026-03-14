@@ -21,6 +21,8 @@ type Citation = {
 
 export type AskMemoraResult = {
   answer: string;
+  confidenceScore: number;
+  confidenceLabel: "low" | "medium" | "high";
   citations: Citation[];
 };
 
@@ -177,11 +179,34 @@ function buildAnswerText(question: string, citations: Citation[]) {
   ].join("\n");
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function deriveConfidence(topScore: number, citationCount: number) {
+  // Normalize score into a 0..1 range and blend with citation count signal.
+  const scoreSignal = clamp((topScore - 1.6) / 3.6, 0, 1);
+  const citationSignal = clamp(citationCount / 5, 0, 1);
+  const confidenceScore = clamp(scoreSignal * 0.75 + citationSignal * 0.25, 0, 1);
+
+  if (confidenceScore >= 0.7) {
+    return { confidenceScore, confidenceLabel: "high" as const };
+  }
+
+  if (confidenceScore >= 0.45) {
+    return { confidenceScore, confidenceLabel: "medium" as const };
+  }
+
+  return { confidenceScore, confidenceLabel: "low" as const };
+}
+
 export function buildAskMemoraAnswer(question: string, rows: SearchRow[]): AskMemoraResult {
   const normalizedQuestion = question.trim();
   if (!normalizedQuestion) {
     return {
       answer: "Ask a question to search your recordings.",
+      confidenceScore: 0,
+      confidenceLabel: "low",
       citations: [],
     };
   }
@@ -195,8 +220,12 @@ export function buildAskMemoraAnswer(question: string, rows: SearchRow[]): AskMe
     .map((entry) => entry);
 
   if (!ranked.length || ranked[0].score < MIN_CONFIDENT_SCORE) {
+    const weakScore = ranked.length ? ranked[0].score : 0;
+    const weakConfidence = deriveConfidence(weakScore, 0);
     return {
       answer: `I found weak evidence for: "${normalizedQuestion}". Try a clearer query, or run processing on more sessions for stronger citations.`,
+      confidenceScore: weakConfidence.confidenceScore,
+      confidenceLabel: weakConfidence.confidenceLabel,
       citations: [],
     };
   }
@@ -234,8 +263,12 @@ export function buildAskMemoraAnswer(question: string, rows: SearchRow[]): AskMe
     }
   }
 
+  const finalConfidence = deriveConfidence(ranked[0]?.score ?? 0, citations.length);
+
   return {
     answer: buildAnswerText(normalizedQuestion, citations),
+    confidenceScore: finalConfidence.confidenceScore,
+    confidenceLabel: finalConfidence.confidenceLabel,
     citations,
   };
 }
