@@ -98,6 +98,24 @@ function extractLikelyAppNames(rows) {
         .slice(0, 6)
         .map(([token]) => normalizeTokenForDisplay(token));
 }
+function getRowModality(row) {
+    if (row.chunk_type === "ocr") {
+        return "ocr";
+    }
+    if (/^\[AUDIO\s+/i.test(row.content)) {
+        return "audio";
+    }
+    return "visual-transcript";
+}
+function modalityLabel(modality) {
+    if (modality === "audio") {
+        return "Audio";
+    }
+    if (modality === "visual-transcript") {
+        return "Subtitles/Visual Transcript";
+    }
+    return "On-screen OCR";
+}
 function extractTimestamp(content) {
     const match = content.match(/\[(?:AUDIO|VISUAL)?\s*(\d{2}:\d{2})\]/i);
     if (!match) {
@@ -178,8 +196,10 @@ function buildAnswerText(question, citations) {
     }
     const keyLines = citations.slice(0, 3).map((item) => item.content.replace(/\s+/g, " ").trim());
     const citedSessions = new Set(citations.map((item) => item.sessionId)).size;
+    const coveredModalities = [...new Set(citations.map((item) => modalityLabel(item.modality)))];
     return [
         `Based on ${citedSessions} recording session(s), here is the best supported answer for: "${question}".`,
+        `Evidence checked across: ${coveredModalities.join(", ")}.`,
         ...keyLines.map((line, index) => `${index + 1}. ${line}`),
     ].join("\n");
 }
@@ -198,6 +218,38 @@ function deriveConfidence(topScore, citationCount) {
         return { confidenceScore, confidenceLabel: "medium" };
     }
     return { confidenceScore, confidenceLabel: "low" };
+}
+function modalityPickPass(ranked, citations, uniqueByChunk, perSessionCount) {
+    const requiredModalities = ["audio", "visual-transcript", "ocr"];
+    for (const required of requiredModalities) {
+        const found = ranked.find(({ row }) => {
+            if (uniqueByChunk.has(row.chunk_id)) {
+                return false;
+            }
+            const sessionCount = perSessionCount.get(row.session_id) ?? 0;
+            if (sessionCount >= 2) {
+                return false;
+            }
+            return getRowModality(row) === required;
+        });
+        if (!found) {
+            continue;
+        }
+        const row = found.row;
+        uniqueByChunk.add(row.chunk_id);
+        perSessionCount.set(row.session_id, (perSessionCount.get(row.session_id) ?? 0) + 1);
+        const ts = extractTimestamp(row.content);
+        citations.push({
+            chunkId: row.chunk_id,
+            sessionId: row.session_id,
+            chunkType: row.chunk_type,
+            content: row.content,
+            confidence: row.confidence,
+            timestampSeconds: ts.timestampSeconds,
+            timestampLabel: ts.timestampLabel,
+            modality: getRowModality(row),
+        });
+    }
 }
 export function buildAskMemoraAnswer(question, rows) {
     const normalizedQuestion = question.trim();
@@ -231,6 +283,7 @@ export function buildAskMemoraAnswer(question, rows) {
                         confidence: row.confidence,
                         timestampSeconds: ts.timestampSeconds,
                         timestampLabel: ts.timestampLabel,
+                        modality: "ocr",
                     };
                 });
                 const confidence = deriveConfidence(ranked[0]?.score ?? 2.2, mapped.length);
@@ -254,7 +307,12 @@ export function buildAskMemoraAnswer(question, rows) {
     const uniqueByChunk = new Set();
     const perSessionCount = new Map();
     const citations = [];
+    // First pass guarantees we sample evidence from every available modality.
+    modalityPickPass(ranked, citations, uniqueByChunk, perSessionCount);
     for (const { row } of ranked) {
+        if (citations.length >= 5) {
+            break;
+        }
         if (uniqueByChunk.has(row.chunk_id)) {
             continue;
         }
@@ -273,10 +331,8 @@ export function buildAskMemoraAnswer(question, rows) {
             confidence: row.confidence,
             timestampSeconds: ts.timestampSeconds,
             timestampLabel: ts.timestampLabel,
+            modality: getRowModality(row),
         });
-        if (citations.length >= 5) {
-            break;
-        }
     }
     const finalConfidence = deriveConfidence(ranked[0]?.score ?? 0, citations.length);
     return {
