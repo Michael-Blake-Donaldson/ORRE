@@ -757,7 +757,13 @@ function renderAskCitations(citations) {
     .map((citation) => {
       const confidence = Math.round(citation.confidence * 100);
       const timestamp = citation.timestampLabel ?? "--:--";
-      return `<li data-citation-session-id="${citation.sessionId}" data-citation-ts="${citation.timestampSeconds ?? ""}"><div class="citation-meta">${citation.chunkType} • ${confidence}% • ${timestamp}</div><div>${citation.content}</div></li>`;
+      const modalityLabel =
+        citation.modality === "audio"
+          ? "Audio"
+          : citation.modality === "visual-transcript"
+            ? "Subtitles/Visual"
+            : "OCR";
+      return `<li data-citation-session-id="${citation.sessionId}" data-citation-ts="${citation.timestampSeconds ?? ""}"><div class="citation-meta">${modalityLabel} • ${citation.chunkType} • ${confidence}% • ${timestamp}</div><div>${citation.content}</div></li>`;
     })
     .join("");
 

@@ -135,6 +135,7 @@ const api = {
         chunkId: string;
         sessionId: string;
         chunkType: "ocr" | "transcript";
+        modality: "audio" | "visual-transcript" | "ocr";
         content: string;
         confidence: number;
         timestampSeconds: number | null;

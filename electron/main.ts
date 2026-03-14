@@ -246,12 +246,18 @@ ipcMain.handle("search:content", async (_event, payload: { query: string; limit?
 });
 
 ipcMain.handle("ask:query", async (_event, payload: { question: string; limit?: number }) => {
-  const primaryRows = store.searchExtractedContent(payload.question, payload.limit ?? 60);
-  const lower = payload.question.toLowerCase();
-  const isVisualQuestion = /\b(app|apps|icon|icons|screen|show|shown|visible|video|tab|home)\b/.test(lower);
+  const primaryRows = store.searchExtractedContent(payload.question, payload.limit ?? 80);
+  const transcriptRows = store.listRecentExtractedRows(220, "transcript");
+  const ocrRows = store.listRecentExtractedRows(220, "ocr");
 
-  const fallbackRows = isVisualQuestion ? store.listRecentExtractedRows(160, "ocr") : [];
-  const merged = [...primaryRows, ...fallbackRows];
+  const mergedMap = new Map<string, (typeof primaryRows)[number]>();
+  for (const row of [...primaryRows, ...transcriptRows, ...ocrRows]) {
+    if (!mergedMap.has(row.chunk_id)) {
+      mergedMap.set(row.chunk_id, row);
+    }
+  }
+
+  const merged = [...mergedMap.values()];
 
   return buildAskMemoraAnswer(payload.question, merged);
 });
