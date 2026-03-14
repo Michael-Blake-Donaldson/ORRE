@@ -1033,13 +1033,23 @@ startBtn.addEventListener("click", async () => {
 
   try {
     // Keep this call directly in click flow so browser user activation is preserved.
-    mediaStream = await navigator.mediaDevices.getDisplayMedia({
-      video: {
-        frameRate: 15,
-      },
-      // Keep start path reliable. System-audio capture will be added as an explicit option.
-      audio: false,
-    });
+    // Prefer capturing system audio so Ask Memora can use audio + visual evidence together.
+    try {
+      mediaStream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          frameRate: 15,
+        },
+        audio: true,
+      });
+    } catch {
+      mediaStream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          frameRate: 15,
+        },
+        audio: false,
+      });
+      statusText.textContent = "Recording started without audio track on this source. Visual analysis remains active.";
+    }
 
     permissionState.screen = "granted";
     persistPermissionState("screen", "granted");
