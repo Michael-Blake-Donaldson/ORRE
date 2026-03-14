@@ -368,6 +368,41 @@ export class MemoraStore {
          LIMIT ?`)
             .all(normalized, limit);
     }
+    listRecentExtractedRows(limit = 120, chunkType) {
+        if (chunkType) {
+            return this.db
+                .prepare(`SELECT
+             ec.id AS chunk_id,
+             ec.session_id AS session_id,
+             s.mode AS session_mode,
+             s.started_at AS session_started_at,
+             ec.chunk_type AS chunk_type,
+             ec.content AS content,
+             ec.confidence AS confidence,
+             9999.0 AS rank
+           FROM extracted_chunks ec
+           JOIN sessions s ON s.id = ec.session_id
+           WHERE ec.chunk_type = ?
+           ORDER BY ec.created_at DESC
+           LIMIT ?`)
+                .all(chunkType, limit);
+        }
+        return this.db
+            .prepare(`SELECT
+           ec.id AS chunk_id,
+           ec.session_id AS session_id,
+           s.mode AS session_mode,
+           s.started_at AS session_started_at,
+           ec.chunk_type AS chunk_type,
+           ec.content AS content,
+           ec.confidence AS confidence,
+           9999.0 AS rank
+         FROM extracted_chunks ec
+         JOIN sessions s ON s.id = ec.session_id
+         ORDER BY ec.created_at DESC
+         LIMIT ?`)
+            .all(limit);
+    }
 }
 export function createDb(userDataPath) {
     return new MemoraStore(userDataPath);

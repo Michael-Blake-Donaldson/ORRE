@@ -64,17 +64,15 @@ export async function runOcrOnFrames(framePaths: string[]): Promise<OcrChunk[]> 
 
   // Reuse one worker to keep memory and startup overhead lower.
   const worker = await createWorker("eng");
-  await worker.setParameters({
-    tessedit_pageseg_mode: "6",
-    preserve_interword_spaces: "1",
-  });
 
   try {
     const chunks: OcrChunk[] = [];
 
     for (const framePath of framePaths) {
       const result = await worker.recognize(framePath);
-      const lines = Array.isArray(result.data.lines) ? result.data.lines : [];
+      const lines = Array.isArray((result.data as { lines?: unknown[] }).lines)
+        ? ((result.data as { lines?: Array<{ text?: string; confidence?: number }> }).lines ?? [])
+        : [];
 
       if (lines.length > 0) {
         for (const line of lines) {

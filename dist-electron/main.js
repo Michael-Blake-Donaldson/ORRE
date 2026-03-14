@@ -197,8 +197,12 @@ ipcMain.handle("search:content", async (_event, payload) => {
     return store.searchExtractedContent(payload.query, payload.limit ?? 25);
 });
 ipcMain.handle("ask:query", async (_event, payload) => {
-    const rows = store.searchExtractedContent(payload.question, payload.limit ?? 60);
-    return buildAskMemoraAnswer(payload.question, rows);
+    const primaryRows = store.searchExtractedContent(payload.question, payload.limit ?? 60);
+    const lower = payload.question.toLowerCase();
+    const isVisualQuestion = /\b(app|apps|icon|icons|screen|show|shown|visible|video|tab|home)\b/.test(lower);
+    const fallbackRows = isVisualQuestion ? store.listRecentExtractedRows(160, "ocr") : [];
+    const merged = [...primaryRows, ...fallbackRows];
+    return buildAskMemoraAnswer(payload.question, merged);
 });
 ipcMain.handle("sessions:generateSummary", async (_event, sessionId) => {
     const detail = store.getSessionDetail(sessionId);

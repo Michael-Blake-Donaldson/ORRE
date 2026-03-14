@@ -44,6 +44,60 @@ const STOP_WORDS = new Set([
     "would",
 ]);
 const MIN_CONFIDENT_SCORE = 2.35;
+function isAppVisualQuestion(question) {
+    return /\b(app|apps|application|icon|icons|favorite|favourites|favorites|home tab|shown|visible|screen|video)\b/i.test(question);
+}
+function normalizeTokenForDisplay(token) {
+    if (!token) {
+        return token;
+    }
+    if (token.length <= 3) {
+        return token.toUpperCase();
+    }
+    return token.charAt(0).toUpperCase() + token.slice(1).toLowerCase();
+}
+function extractLikelyAppNames(rows) {
+    const blacklist = new Set([
+        "home",
+        "tab",
+        "video",
+        "apps",
+        "app",
+        "favorites",
+        "favourites",
+        "google",
+        "search",
+        "settings",
+        "account",
+        "more",
+        "show",
+        "shown",
+        "open",
+        "play",
+        "pause",
+        "time",
+        "date",
+    ]);
+    const scores = new Map();
+    for (const row of rows) {
+        if (row.chunk_type !== "ocr") {
+            continue;
+        }
+        const words = row.content.match(/[A-Za-z][A-Za-z0-9.+-]{1,24}/g) ?? [];
+        for (const word of words) {
+            const normalized = word.toLowerCase();
+            if (normalized.length < 3 || blacklist.has(normalized)) {
+                continue;
+            }
+            const current = scores.get(normalized) ?? 0;
+            scores.set(normalized, current + row.confidence + 0.2);
+        }
+    }
+    return [...scores.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 6)
+        .map(([token]) => normalizeTokenForDisplay(token));
+}
 function extractTimestamp(content) {
     const match = content.match(/\[(?:AUDIO|VISUAL)?\s*(\d{2}:\d{2})\]/i);
     if (!match) {
@@ -157,11 +211,37 @@ export function buildAskMemoraAnswer(question, rows) {
     }
     const queryTokens = tokenize(normalizedQuestion);
     const queryTf = buildTermFrequency(queryTokens);
+    const appVisualQuestion = isAppVisualQuestion(normalizedQuestion);
     const ranked = [...rows]
         .map((row) => ({ row, score: scoreRow(row, queryTokens, queryTf) }))
         .sort((a, b) => b.score - a.score)
         .map((entry) => entry);
     if (!ranked.length || ranked[0].score < MIN_CONFIDENT_SCORE) {
+        if (appVisualQuestion) {
+            const appNames = extractLikelyAppNames(rows);
+            if (appNames.length > 0) {
+                const ocrCitations = rows.filter((row) => row.chunk_type === "ocr").slice(0, 4);
+                const mapped = ocrCitations.map((row) => {
+                    const ts = extractTimestamp(row.content);
+                    return {
+                        chunkId: row.chunk_id,
+                        sessionId: row.session_id,
+                        chunkType: row.chunk_type,
+                        content: row.content,
+                        confidence: row.confidence,
+                        timestampSeconds: ts.timestampSeconds,
+                        timestampLabel: ts.timestampLabel,
+                    };
+                });
+                const confidence = deriveConfidence(ranked[0]?.score ?? 2.2, mapped.length);
+                return {
+                    answer: `From visible on-screen text, likely apps shown include: ${appNames.join(", ")}. Verify with the cited frames below.`,
+                    confidenceScore: Math.max(confidence.confidenceScore, 0.45),
+                    confidenceLabel: confidence.confidenceLabel === "low" ? "medium" : confidence.confidenceLabel,
+                    citations: mapped,
+                };
+            }
+        }
         const weakScore = ranked.length ? ranked[0].score : 0;
         const weakConfidence = deriveConfidence(weakScore, 0);
         return {
