@@ -40,6 +40,7 @@ const sessionDetailTitle = document.getElementById("sessionDetailTitle");
 const sessionDetailSubtitle = document.getElementById("sessionDetailSubtitle");
 const processingJobs = document.getElementById("processingJobs");
 const extractedChunks = document.getElementById("extractedChunks");
+const sessionHealth = document.getElementById("sessionHealth");
 const grantScreenBtn = document.getElementById("grantScreenBtn");
 const grantMicBtn = document.getElementById("grantMicBtn");
 const screenPermissionStatus = document.getElementById("screenPermissionStatus");
@@ -380,6 +381,60 @@ function startDetailPolling() {
 function createStatusChip(status) {
   const className = `chip chip--${status}`;
   return `<span class="${className}">${status}</span>`;
+}
+
+function formatJobDuration(startedAt, finishedAt) {
+  if (!startedAt || !finishedAt) {
+    return null;
+  }
+
+  const durationMs = new Date(finishedAt).getTime() - new Date(startedAt).getTime();
+  if (!Number.isFinite(durationMs) || durationMs < 0) {
+    return null;
+  }
+
+  const seconds = Math.round(durationMs / 100) / 10;
+  return `${seconds.toFixed(seconds >= 10 ? 0 : 1)}s`;
+}
+
+function renderSessionHealth(detail) {
+  if (!sessionHealth) {
+    return;
+  }
+
+  if (!detail.session || !detail.health) {
+    sessionHealth.innerHTML =
+      '<div class="health-shell__empty">Select a session to inspect coverage, job health, and failures.</div>';
+    return;
+  }
+
+  const health = detail.health;
+  const audioState = health.has_audio_evidence ? "Detected" : "Missing";
+  const visualState = health.has_visual_evidence ? "Detected" : "Missing";
+  const latestError = health.latest_error
+    ? `<div class="health-callout health-callout--error"><div class="health-callout__label">Latest failure</div><div>${health.latest_error}</div></div>`
+    : '<div class="health-callout"><div class="health-callout__label">Latest failure</div><div>None</div></div>';
+
+  sessionHealth.innerHTML = `
+    <div class="health-status-row">
+      <div class="health-status health-status--${health.status}">
+        <div class="health-status__eyebrow">Overall</div>
+        <div class="health-status__title">${health.status_label}</div>
+        <div class="health-status__text">${health.summary}</div>
+      </div>
+      <div class="health-callout">
+        <div class="health-callout__label">Coverage</div>
+        <div>${health.coverage_label}</div>
+      </div>
+      ${latestError}
+    </div>
+    <div class="health-metrics-grid">
+      <div class="health-metric"><span class="health-metric__label">Audio evidence</span><strong>${audioState}</strong><span>${health.audio_segment_count} segments</span></div>
+      <div class="health-metric"><span class="health-metric__label">Visual evidence</span><strong>${visualState}</strong><span>${health.visual_segment_count} transcript lines, ${health.ocr_chunk_count} OCR chunks</span></div>
+      <div class="health-metric"><span class="health-metric__label">Transcript coverage</span><strong>${health.transcript_chunk_count}</strong><span>Total transcript chunks</span></div>
+      <div class="health-metric"><span class="health-metric__label">Jobs</span><strong>${health.completed_job_count} complete / ${health.failed_job_count} failed</strong><span>${health.queued_job_count} queued, ${health.running_job_count} running</span></div>
+    </div>
+  `;
 }
 
 function setActiveTranscriptSourceFilter(nextFilter) {
@@ -851,6 +906,7 @@ function renderSessionDetail(detail) {
     sessionDetailSubtitle.textContent = "Session not found.";
     processingJobs.innerHTML = "<li>No jobs found.</li>";
     extractedChunks.innerHTML = "<li>No extracted chunks found.</li>";
+    renderSessionHealth(detail);
     if (sessionTranscript) {
       sessionTranscript.textContent = "No transcript generated yet.";
     }
@@ -922,18 +978,21 @@ function renderSessionDetail(detail) {
   } else {
     processingJobs.innerHTML = detail.jobs
       .map((job) => {
+        const duration = formatJobDuration(job.started_at, job.finished_at);
         const timing = job.finished_at
           ? `Finished ${new Date(job.finished_at).toLocaleTimeString()}`
           : job.started_at
             ? `Started ${new Date(job.started_at).toLocaleTimeString()}`
             : "Waiting";
 
+        const durationLine = duration ? `<div>Duration ${duration}</div>` : "";
         const error = job.error_message ? `<div>${job.error_message}</div>` : "";
-        return `<li><div class="meta">${job.job_type} ${createStatusChip(job.status)}</div><div>${timing}</div>${error}</li>`;
+        return `<li><div class="meta">${job.job_type} ${createStatusChip(job.status)}</div><div>${timing}</div>${durationLine}${error}</li>`;
       })
       .join("");
   }
 
+  renderSessionHealth(detail);
   renderExtractedChunksList(detail.chunks);
   renderTranscript(detail);
 

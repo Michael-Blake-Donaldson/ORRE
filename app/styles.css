@@ -318,6 +318,94 @@ select {
   white-space: pre-wrap;
 }
 
+.health-shell {
+  margin-top: 12px;
+  display: grid;
+  gap: 12px;
+}
+
+.health-shell__empty {
+  border: 1px dashed var(--panel-border);
+  border-radius: 10px;
+  padding: 12px;
+  color: var(--muted);
+  background: #0f141dcc;
+}
+
+.health-status-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.health-status,
+.health-callout,
+.health-metric {
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  background: #0f141dcc;
+  padding: 12px;
+}
+
+.health-status__eyebrow,
+.health-callout__label,
+.health-metric__label {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.health-status__title {
+  margin-top: 6px;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.health-status__text {
+  margin-top: 6px;
+  color: var(--text);
+}
+
+.health-status--healthy {
+  border-color: #2bbf90;
+  background: linear-gradient(180deg, rgba(43, 191, 144, 0.16), rgba(15, 20, 29, 0.96));
+}
+
+.health-status--partial,
+.health-status--pending,
+.health-status--unsaved {
+  border-color: #f0b45a;
+  background: linear-gradient(180deg, rgba(240, 180, 90, 0.16), rgba(15, 20, 29, 0.96));
+}
+
+.health-status--degraded,
+.health-callout--error {
+  border-color: var(--danger);
+  background: linear-gradient(180deg, rgba(255, 106, 126, 0.14), rgba(15, 20, 29, 0.96));
+}
+
+.health-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.health-metric {
+  display: grid;
+  gap: 6px;
+}
+
+.health-metric strong {
+  font-size: 18px;
+  color: var(--text);
+}
+
+.health-metric span:last-child,
+.health-callout div:last-child {
+  color: var(--muted);
+}
+
 .citation-meta {
   color: #9fc2eb;
   font-size: 12px;
@@ -616,6 +704,8 @@ ul {
 
   .detail-grid,
   .grid,
+  .health-status-row,
+  .health-metrics-grid,
   .diagnostics-grid,
   .library-grid,
   .library-toolbar,

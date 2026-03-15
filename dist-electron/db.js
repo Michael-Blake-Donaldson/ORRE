@@ -307,6 +307,78 @@ export class MemoraStore {
         });
         transaction();
     }
+    buildSessionHealthSummary(session, jobs, chunks) {
+        if (!session) {
+            return null;
+        }
+        const ocrChunks = chunks.filter((chunk) => chunk.chunk_type === "ocr");
+        const transcriptChunks = chunks.filter((chunk) => chunk.chunk_type === "transcript");
+        const audioSegments = transcriptChunks.filter((chunk) => /^\[AUDIO\s+\d{2}:\d{2}\]/i.test(chunk.content.trim()));
+        const visualSegments = transcriptChunks.filter((chunk) => !/^\[AUDIO\s+\d{2}:\d{2}\]/i.test(chunk.content.trim()));
+        const queuedJobCount = jobs.filter((job) => job.status === "queued").length;
+        const runningJobCount = jobs.filter((job) => job.status === "running").length;
+        const completedJobCount = jobs.filter((job) => job.status === "completed").length;
+        const failedJobCount = jobs.filter((job) => job.status === "failed").length;
+        const latestFailedJob = [...jobs]
+            .filter((job) => job.status === "failed" && job.error_message)
+            .sort((left, right) => (right.finished_at ?? right.created_at).localeCompare(left.finished_at ?? left.created_at))[0];
+        const hasSavedFile = Boolean(session.file_path);
+        const hasAudioEvidence = audioSegments.length > 0;
+        const hasVisualEvidence = ocrChunks.length > 0 || visualSegments.length > 0;
+        let status = "healthy";
+        let statusLabel = "Healthy";
+        let summary = "Audio and visual evidence are both available for this session.";
+        if (!hasSavedFile) {
+            status = "unsaved";
+            statusLabel = "Unsaved";
+            summary = "Recording metadata exists, but no saved replay file is attached yet.";
+        }
+        else if (queuedJobCount > 0 || runningJobCount > 0) {
+            status = "pending";
+            statusLabel = "Processing";
+            summary = "Processing is still running. Coverage may improve when jobs finish.";
+        }
+        else if (failedJobCount > 0 && !hasAudioEvidence && !hasVisualEvidence) {
+            status = "degraded";
+            statusLabel = "Degraded";
+            summary = "Processing failed and no usable evidence was extracted from this session.";
+        }
+        else if (failedJobCount > 0 || !hasAudioEvidence || !hasVisualEvidence) {
+            status = "partial";
+            statusLabel = "Partial";
+            summary = hasAudioEvidence || hasVisualEvidence
+                ? "Session has usable evidence, but one or more modalities are incomplete or failed."
+                : "Session processing completed with weak evidence coverage.";
+        }
+        let coverageLabel = "Audio + Visual";
+        if (hasAudioEvidence && !hasVisualEvidence) {
+            coverageLabel = "Audio only";
+        }
+        else if (!hasAudioEvidence && hasVisualEvidence) {
+            coverageLabel = "Visual only";
+        }
+        else if (!hasAudioEvidence && !hasVisualEvidence) {
+            coverageLabel = "No extracted evidence";
+        }
+        return {
+            status,
+            status_label: statusLabel,
+            coverage_label: coverageLabel,
+            summary,
+            has_saved_file: hasSavedFile,
+            has_audio_evidence: hasAudioEvidence,
+            has_visual_evidence: hasVisualEvidence,
+            ocr_chunk_count: ocrChunks.length,
+            transcript_chunk_count: transcriptChunks.length,
+            audio_segment_count: audioSegments.length,
+            visual_segment_count: visualSegments.length,
+            queued_job_count: queuedJobCount,
+            running_job_count: runningJobCount,
+            completed_job_count: completedJobCount,
+            failed_job_count: failedJobCount,
+            latest_error: latestFailedJob?.error_message ?? null,
+        };
+    }
     getSessionDetail(sessionId) {
         const session = this.getSessionById(sessionId);
         const jobs = this.db
@@ -321,7 +393,8 @@ export class MemoraStore {
          WHERE session_id = ?
          ORDER BY created_at DESC`)
             .all(sessionId);
-        return { session, jobs, chunks };
+        const health = this.buildSessionHealthSummary(session, jobs, chunks);
+        return { session, jobs, chunks, health };
     }
     searchExtractedContent(query, limit = 25) {
         const normalized = query.trim();

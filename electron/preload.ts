@@ -45,6 +45,26 @@ type SessionDetail = {
   session: SessionRow | null;
   jobs: ProcessingJobRow[];
   chunks: ExtractedChunkRow[];
+  health: SessionHealthSummary | null;
+};
+
+type SessionHealthSummary = {
+  status: "healthy" | "partial" | "degraded" | "pending" | "unsaved";
+  status_label: string;
+  coverage_label: string;
+  summary: string;
+  has_saved_file: boolean;
+  has_audio_evidence: boolean;
+  has_visual_evidence: boolean;
+  ocr_chunk_count: number;
+  transcript_chunk_count: number;
+  audio_segment_count: number;
+  visual_segment_count: number;
+  queued_job_count: number;
+  running_job_count: number;
+  completed_job_count: number;
+  failed_job_count: number;
+  latest_error: string | null;
 };
 
 type SearchResultRow = {
