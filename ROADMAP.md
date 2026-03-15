@@ -1,108 +1,82 @@
 # Memora Productization Roadmap
 
-This roadmap is ordered for turning the current prototype into a reliable Windows app.
+Last updated: 2026-03-15
 
-## Milestone A: Reliability And Session Health
+This is now a live execution roadmap, not a speculative outline.
 
-Goal: make record -> process -> replay -> ask reliable enough that failures are visible and diagnosable.
+## Milestone Status
 
-Tasks:
-- Add session health diagnostics to session detail.
-- Show audio capture presence, OCR chunk count, transcript chunk count, job durations, and latest failure reason.
-- Detect and label sessions with partial processing outcomes.
-- Improve processing state transitions so queued, running, failed, and completed states are always accurate.
-- Add a rerun flow that clearly resets and reprocesses a session.
-- Verify replay availability before showing replay actions.
+- Milestone A - Reliability And Session Health: Completed
+- Milestone B - Core UX Polish: Completed
+- Milestone C - Settings And Control Surface: Completed
+- Milestone D - Multimodal Quality Benchmarking: Completed (foundation)
+- Milestone E - Packaging And Distribution: Not started
+- Milestone F - Release Readiness: Not started
 
-Exit criteria:
-- A failed or partial session is obvious in the UI.
-- A healthy session can be distinguished from a degraded session without opening logs.
-- Reprocessing a session produces predictable job states.
+## Completed Work (A-D)
 
-## Milestone B: Core UX Polish
+### A: Reliability And Session Health
+- Added session health diagnostics in session detail.
+- Added modality and extraction visibility (audio presence, OCR/transcript counts, job timing, latest failure).
+- Added clearer partial/degraded session labeling.
+- Hardened rerun flow to prevent stale data and duplicate processing requests.
 
-Goal: make the app feel deliberate on Windows instead of developer-only.
+### B: Core UX Polish
+- Replaced phase/prototype dashboard copy with product-oriented copy.
+- Improved dashboard clarity and flow for record -> process -> ask.
+- Added back-to-top interaction and smoother cross-section navigation.
 
-Tasks:
-- Replace phase-oriented copy with product copy across dashboard surfaces.
-- Improve empty states, loading states, and error states on dashboard, search, ask, and session detail.
-- Tighten the top-level layout, spacing, and typography for desktop use.
-- Add keyboard shortcuts for start, stop, search focus, and quick navigation.
-- Improve recording-state visibility so active capture is unmistakable.
-- Add a first-run onboarding panel explaining capture, processing, and privacy defaults.
+### C: Settings And Control Surface
+- Added persistent settings storage.
+- Added user controls for capture defaults and Ask retrieval limit.
+- Split settings into a dedicated page for cleaner IA and workflow.
 
-Exit criteria:
-- A first-time user can understand how to record and inspect a session without guidance.
-- The main dashboard no longer reads like a phased prototype.
+### D: Multimodal Quality Benchmarking
+- Added benchmark runner scaffolding and benchmark settings persistence.
+- Split benchmarks into a dedicated page.
+- Added benchmark output summary for confidence and modality coverage trends.
 
-## Milestone C: Settings And Control Surface
+## Remaining Work
 
-Goal: expose user-controllable behavior instead of hard-coded defaults.
-
-Tasks:
-- Add persistent settings storage.
-- Add capture preferences for source selection behavior and recording mode defaults.
-- Add processing preferences for transcript quality mode and OCR sampling density.
-- Add storage preferences for save location, retention, and cleanup behavior.
-- Add privacy controls for microphone usage and optional deletion of raw recordings.
-
-Exit criteria:
-- Core capture and processing behavior can be changed from the UI.
-- Settings persist across restarts.
-
-## Milestone D: Multimodal Quality Benchmarking
-
-Goal: improve answer quality with measurement, not guesswork.
+### Milestone E: Packaging And Distribution
+Goal: make install and versioning behave like a production Windows app.
 
 Tasks:
-- Create a benchmark set of real sessions and real user questions.
-- Add session-level modality coverage indicators for audio, OCR, and visual transcript strength.
-- Improve visual entity extraction when OCR text is sparse.
-- Reprocess benchmark sessions after pipeline changes and compare answer quality.
-- Tune retrieval balancing between audio transcript, visual transcript, and OCR evidence.
-
-Exit criteria:
-- Quality changes are evaluated against a fixed benchmark set.
-- Ask responses visibly indicate when evidence coverage is weak.
-
-## Milestone E: Packaging And Distribution
-
-Goal: make installation and versioning work like a real Windows app.
-
-Tasks:
-- Add production build and installer generation.
-- Add Windows app metadata, icon assets, and versioning.
+- Add production build and Windows installer generation.
+- Add app metadata, icon assets, and release versioning.
 - Define update strategy.
 - Add startup checks for missing native dependencies or broken model assets.
-- Add crash logging or failure capture for field debugging.
+- Add crash/failure capture for field debugging.
 
 Exit criteria:
-- The app can be installed on a clean Windows machine.
-- Versioned builds are reproducible.
+- App installs and launches on a clean Windows machine.
+- Versioned builds are reproducible and testable.
 
-## Milestone F: Release Readiness
-
-Goal: reduce operational surprises before broader usage.
+### Milestone F: Release Readiness
+Goal: reduce surprises before broader distribution.
 
 Tasks:
-- Add export and recovery paths for sessions and metadata.
-- Add a manual smoke-test checklist for every build.
-- Test longer recordings and large libraries for performance issues.
-- Validate uninstall and reinstall behavior.
-- Document known limitations and privacy guarantees.
+- Add export and recovery path for sessions/metadata.
+- Add manual smoke test checklist per release.
+- Validate performance on longer recordings and larger libraries.
+- Validate uninstall/reinstall behavior.
+- Document privacy guarantees and known limitations.
 
 Exit criteria:
-- There is a repeatable pre-release test pass.
-- Recovery and basic data portability exist.
+- Repeatable pre-release QA pass exists.
+- Recovery and basic data portability are available.
 
-## Immediate Next Slice
+## Current Stop Point
 
-Start with Milestone A by implementing session health diagnostics in session detail.
+Per current direction, stop before Milestone E implementation so final pre-package changes can be made first.
 
-First implementation items:
-- Compute session-level health summary from jobs and extracted chunks.
-- Surface the summary in the dashboard session detail panel.
-- Show whether the session appears to have audio evidence, visual evidence, both, or degraded coverage.
-- Show latest job error without requiring log inspection.
+## Next Two Concrete Actions
 
-This work should happen before broader UI polish because it becomes the foundation for debugging every later quality issue.
+1. Final pre-package pass
+- Clean UX text and edge-state messaging across dashboard, settings, benchmarks, and library.
+- Confirm no stale references to in-dashboard settings/benchmark sections remain.
+
+2. Packaging prep checklist (no installer build yet)
+- Decide installer/update approach.
+- Finalize app identity assets and versioning scheme.
+- Define minimum acceptance test for first packaged build.
