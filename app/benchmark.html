@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob: file: data:; connect-src 'self';" />
+    <title>Memora Benchmarks</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="nav-rail">
+        <div class="brand">Memora</div>
+        <button class="nav-item" data-page="dashboard">Dashboard</button>
+        <button class="nav-item" data-page="library">Library</button>
+        <button class="nav-item" data-page="settings">Settings</button>
+        <button class="nav-item nav-item--active" data-page="benchmarks">Benchmarks</button>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <h1>Benchmark Runner</h1>
+            <p>Track confidence and modality coverage across a fixed question set.</p>
+          </div>
+        </header>
+
+        <section class="grid">
+          <article class="panel panel--wide">
+            <div class="settings-card settings-card--wide">
+              <div class="field-row">
+                <label for="benchmarkQuestions">Benchmark Questions (one per line)</label>
+                <textarea id="benchmarkQuestions" rows="10"></textarea>
+              </div>
+              <div class="search-row">
+                <input id="benchmarkLimit" type="text" inputmode="numeric" placeholder="80" />
+                <button id="runBenchmarkBtn" class="button button--primary">Run Benchmark</button>
+              </div>
+              <div id="benchmarkOutput" class="summary-output">No benchmark run yet.</div>
+            </div>
+            <p id="benchmarkStatus" class="status">Benchmark ready.</p>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <button id="backToTopBtn" class="back-to-top" type="button">Top</button>
+
+    <script type="module" src="./benchmark.js"></script>
+  </body>
+</html>

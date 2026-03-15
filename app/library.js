@@ -5,7 +5,8 @@ const deleteCategoryBtn = document.getElementById("libraryDeleteCategoryBtn");
 const refreshBtn = document.getElementById("libraryRefreshBtn");
 const statusText = document.getElementById("libraryStatus");
 const sessionGrid = document.getElementById("librarySessionGrid");
-const dashboardNavBtn = document.querySelector(".nav-item[data-page='dashboard']");
+const navButtons = Array.from(document.querySelectorAll(".nav-item[data-page]"));
+const backToTopBtn = document.getElementById("backToTopBtn");
 
 function parseTimestampToSeconds(timestamp) {
   const match = timestamp.match(/^(\d{2}):(\d{2})$/);
@@ -388,9 +389,38 @@ refreshBtn?.addEventListener("click", async () => {
   statusText.textContent = "Library refreshed.";
 });
 
-dashboardNavBtn?.addEventListener("click", () => {
-  window.location.href = "./index.html";
+navButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const page = button.getAttribute("data-page");
+    if (!page) {
+      return;
+    }
+
+    const pageMap = {
+      dashboard: "./index.html",
+      library: "./library.html",
+      settings: "./settings.html",
+      benchmarks: "./benchmark.html",
+    };
+
+    const nextHref = pageMap[page];
+    if (nextHref) {
+      window.location.href = nextHref;
+    }
+  });
 });
+
+if (backToTopBtn) {
+  const syncVisibility = () => {
+    backToTopBtn.classList.toggle("back-to-top--visible", window.scrollY > 260);
+  };
+
+  window.addEventListener("scroll", syncVisibility, { passive: true });
+  backToTopBtn.addEventListener("click", () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+  syncVisibility();
+}
 
 loadLibrary().catch((error) => {
   statusText.textContent = "Could not load library data.";

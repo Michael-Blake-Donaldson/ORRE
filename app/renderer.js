@@ -53,6 +53,7 @@ const askBtn = document.getElementById("askBtn");
 const askConfidence = document.getElementById("askConfidence");
 const askAnswer = document.getElementById("askAnswer");
 const askCitations = document.getElementById("askCitations");
+const backToTopBtn = document.getElementById("backToTopBtn");
 const settingDefaultMode = document.getElementById("settingDefaultMode");
 const settingSourceStrategy = document.getElementById("settingSourceStrategy");
 const settingAskLimit = document.getElementById("settingAskLimit");
@@ -98,8 +99,18 @@ function setupNavigation() {
   navButtons.forEach((button) => {
     button.addEventListener("click", () => {
       const pageTarget = button.getAttribute("data-page");
-      if (pageTarget === "library") {
-        window.location.href = "./library.html";
+      if (pageTarget) {
+        const pageMap = {
+          dashboard: "./index.html",
+          library: "./library.html",
+          settings: "./settings.html",
+          benchmarks: "./benchmark.html",
+        };
+
+        const nextHref = pageMap[pageTarget];
+        if (nextHref) {
+          window.location.href = nextHref;
+        }
         return;
       }
 
@@ -114,6 +125,23 @@ function setupNavigation() {
       }
     });
   });
+}
+
+function setupBackToTop() {
+  if (!backToTopBtn) {
+    return;
+  }
+
+  const syncVisibility = () => {
+    backToTopBtn.classList.toggle("back-to-top--visible", window.scrollY > 260);
+  };
+
+  window.addEventListener("scroll", syncVisibility, { passive: true });
+  backToTopBtn.addEventListener("click", () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+
+  syncVisibility();
 }
 
 function setCategoryStatus(text) {
@@ -1863,6 +1891,7 @@ refreshSessions().catch((error) => {
 refreshPermissionUI();
 refreshDiagnosticsUI();
 setupNavigation();
+setupBackToTop();
 setActiveChunkFilter("all");
 setActiveTranscriptSourceFilter("all");
 loadSettings().catch((error) => {

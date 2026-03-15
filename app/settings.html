@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob: file: data:; connect-src 'self';" />
+    <title>Memora Settings</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="nav-rail">
+        <div class="brand">Memora</div>
+        <button class="nav-item" data-page="dashboard">Dashboard</button>
+        <button class="nav-item" data-page="library">Library</button>
+        <button class="nav-item nav-item--active" data-page="settings">Settings</button>
+        <button class="nav-item" data-page="benchmarks">Benchmarks</button>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <h1>Settings</h1>
+            <p>Control capture defaults and retrieval behavior for Memora.</p>
+          </div>
+        </header>
+
+        <section class="grid">
+          <article class="panel panel--wide">
+            <div class="settings-grid">
+              <div class="settings-card">
+                <h3>Capture Defaults</h3>
+                <div class="field-row">
+                  <label for="settingDefaultMode">Default Session Mode</label>
+                  <select id="settingDefaultMode">
+                    <option value="session">Manual Session</option>
+                    <option value="clip">Quick Clip</option>
+                    <option value="always-on">Always-On (Opt-In)</option>
+                  </select>
+                </div>
+                <div class="field-row">
+                  <label for="settingSourceStrategy">Source Selection</label>
+                  <select id="settingSourceStrategy">
+                    <option value="remember-last">Remember last selected source</option>
+                    <option value="system-picker">Always use system picker</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="settings-card">
+                <h3>Ask + Retrieval</h3>
+                <div class="field-row">
+                  <label for="settingAskLimit">Ask Retrieval Limit</label>
+                  <input id="settingAskLimit" type="text" inputmode="numeric" placeholder="60" />
+                </div>
+                <p class="status">Higher values search more chunks and may increase response time.</p>
+              </div>
+            </div>
+
+            <div class="button-row">
+              <button id="saveSettingsBtn" class="button button--primary">Save Settings</button>
+              <button id="resetSettingsBtn" class="button">Reset Defaults</button>
+            </div>
+            <p id="settingsStatus" class="status">Settings ready.</p>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <button id="backToTopBtn" class="back-to-top" type="button">Top</button>
+
+    <script type="module" src="./settings.js"></script>
+  </body>
+</html>

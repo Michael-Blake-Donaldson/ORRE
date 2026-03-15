@@ -314,6 +314,29 @@ select {
   font-size: 12px;
 }
 
+.back-to-top {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 20;
+  border: 1px solid #2bbf90;
+  border-radius: 999px;
+  background: #12342b;
+  color: #c8f7e7;
+  padding: 10px 14px;
+  font-weight: 700;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.back-to-top--visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
 .status {
   color: var(--muted);
   margin-bottom: 0;
