@@ -16,6 +16,74 @@ let activeSessionId = null;
 let preferredDisplaySourceId = null;
 const store = createDb(app.getPath("userData"));
 const processingQueue = new ProcessingQueue(store);
+const DEFAULT_SETTINGS = {
+    defaultMode: "session",
+    sourceStrategy: "remember-last",
+    askLimit: 60,
+    benchmarkQuestions: [
+        "What were the top 3 action items discussed?",
+        "What apps or tools were used most recently?",
+        "Summarize the latest decision that was made.",
+    ].join("\n"),
+    benchmarkLimit: 80,
+};
+function parseSettings(raw) {
+    const merged = {
+        ...DEFAULT_SETTINGS,
+        ...raw,
+    };
+    if (!["session", "clip", "always-on"].includes(merged.defaultMode)) {
+        merged.defaultMode = DEFAULT_SETTINGS.defaultMode;
+    }
+    if (!["remember-last", "system-picker"].includes(merged.sourceStrategy)) {
+        merged.sourceStrategy = DEFAULT_SETTINGS.sourceStrategy;
+    }
+    merged.askLimit = Number.isFinite(Number(merged.askLimit)) ? Math.min(120, Math.max(20, Number(merged.askLimit))) : 60;
+    merged.benchmarkLimit = Number.isFinite(Number(merged.benchmarkLimit))
+        ? Math.min(140, Math.max(20, Number(merged.benchmarkLimit)))
+        : 80;
+    if (typeof merged.benchmarkQuestions !== "string") {
+        merged.benchmarkQuestions = DEFAULT_SETTINGS.benchmarkQuestions;
+    }
+    return merged;
+}
+function runBenchmark(questionList, limit) {
+    const questions = questionList.map((q) => q.trim()).filter((q) => q.length >= 4);
+    const results = questions.map((question) => {
+        const primaryRows = store.searchExtractedContent(question, limit);
+        const transcriptRows = store.listRecentExtractedRows(limit * 2, "transcript");
+        const ocrRows = store.listRecentExtractedRows(limit * 2, "ocr");
+        const mergedMap = new Map();
+        for (const row of [...primaryRows, ...transcriptRows, ...ocrRows]) {
+            if (!mergedMap.has(row.chunk_id)) {
+                mergedMap.set(row.chunk_id, row);
+            }
+        }
+        const answer = buildAskMemoraAnswer(question, [...mergedMap.values()]);
+        const modalities = [...new Set(answer.citations.map((citation) => citation.modality))];
+        return {
+            question,
+            confidenceScore: answer.confidenceScore,
+            confidenceLabel: answer.confidenceLabel,
+            citationCount: answer.citations.length,
+            modalityCoverage: modalities,
+            hasAudioEvidence: modalities.includes("audio"),
+            hasVisualEvidence: modalities.includes("visual-transcript") || modalities.includes("ocr"),
+        };
+    });
+    const avgConfidence = results.length > 0
+        ? results.reduce((total, result) => total + result.confidenceScore, 0) / results.length
+        : 0;
+    const lowConfidenceCount = results.filter((result) => result.confidenceLabel === "low").length;
+    const lowCoverageCount = results.filter((result) => !result.hasAudioEvidence || !result.hasVisualEvidence).length;
+    return {
+        questionCount: questions.length,
+        avgConfidence,
+        lowConfidenceCount,
+        lowCoverageCount,
+        results,
+    };
+}
 async function getAvailableDisplaySources() {
     const sources = await desktopCapturer.getSources({
         types: ["screen", "window"],
@@ -161,8 +229,23 @@ ipcMain.handle("processing:rerun", async (_event, sessionId) => {
     if (!session?.file_path) {
         return { ok: false, reason: "missing-file" };
     }
-    processingQueue.enqueue({ sessionId, filePath: session.file_path });
+    const enqueued = processingQueue.enqueue({ sessionId, filePath: session.file_path });
+    if (!enqueued) {
+        return { ok: false, reason: "already-processing" };
+    }
     return { ok: true };
+});
+ipcMain.handle("settings:get", async () => {
+    return parseSettings(store.getSettings());
+});
+ipcMain.handle("settings:update", async (_event, updates) => {
+    const current = parseSettings(store.getSettings());
+    const next = parseSettings({ ...current, ...updates });
+    store.updateSettings(next);
+    return { ok: true, settings: next };
+});
+ipcMain.handle("benchmark:run", async (_event, payload) => {
+    return runBenchmark(payload.questions, payload.limit);
 });
 ipcMain.handle("sessions:assignCategory", async (_event, payload) => {
     try {

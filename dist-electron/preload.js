@@ -63,5 +63,14 @@ const api = {
     setPreferredDisplaySource: async (sourceId) => {
         return ipcRenderer.invoke("ui:setPreferredDisplaySource", sourceId);
     },
+    getSettings: async () => {
+        return ipcRenderer.invoke("settings:get");
+    },
+    updateSettings: async (updates) => {
+        return ipcRenderer.invoke("settings:update", updates);
+    },
+    runBenchmark: async (questions, limit) => {
+        return ipcRenderer.invoke("benchmark:run", { questions, limit });
+    },
 };
 contextBridge.exposeInMainWorld("memora", api);

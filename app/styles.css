@@ -238,6 +238,17 @@ input[type="text"] {
   background: #0f141e;
 }
 
+textarea {
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 10px;
+  color: var(--text);
+  background: #0f141e;
+  font: inherit;
+  resize: vertical;
+  min-height: 120px;
+}
+
 .permission-row {
   display: flex;
   align-items: center;
@@ -404,6 +415,24 @@ select {
 .health-metric span:last-child,
 .health-callout div:last-child {
   color: var(--muted);
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.settings-card {
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  background: #0f141dcc;
+  padding: 14px;
+}
+
+.settings-card--wide {
+  grid-column: 1 / -1;
 }
 
 .citation-meta {
@@ -704,6 +733,7 @@ ul {
 
   .detail-grid,
   .grid,
+  .settings-grid,
   .health-status-row,
   .health-metrics-grid,
   .diagnostics-grid,

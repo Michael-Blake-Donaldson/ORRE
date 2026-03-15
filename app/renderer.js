@@ -1865,6 +1865,10 @@ refreshDiagnosticsUI();
 setupNavigation();
 setActiveChunkFilter("all");
 setActiveTranscriptSourceFilter("all");
+loadSettings().catch((error) => {
+  setSettingsStatus("Could not load settings.");
+  console.error(error);
+});
 renderCategorySelectOptions(null);
 setCategoryStatus("Create categories and assign them to organize recordings.");
 if (assignCategoryBtn) {
@@ -1890,6 +1894,24 @@ if (searchResults) {
 
 if (askCitations) {
   askCitations.innerHTML = "<li>No citations available for this answer.</li>";
+}
+
+if (saveSettingsBtn) {
+  saveSettingsBtn.addEventListener("click", async () => {
+    await saveSettings();
+  });
+}
+
+if (resetSettingsBtn) {
+  resetSettingsBtn.addEventListener("click", async () => {
+    await resetSettingsToDefaults();
+  });
+}
+
+if (runBenchmarkBtn) {
+  runBenchmarkBtn.addEventListener("click", async () => {
+    await runBenchmarkNow();
+  });
 }
 
 renderAskConfidence("low", 0);

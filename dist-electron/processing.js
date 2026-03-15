@@ -11,11 +11,13 @@ export class ProcessingQueue {
     }
     enqueue(task) {
         if (this.activeSessions.has(task.sessionId) || this.queue.some((item) => item.sessionId === task.sessionId)) {
-            return;
+            return false;
         }
+        this.store.queueProcessingJobs(task.sessionId);
         this.queue.push(task);
         this.activeSessions.add(task.sessionId);
         void this.processNext();
+        return true;
     }
     // Serial processing keeps CPU predictable on low-end systems.
     async processNext() {
@@ -38,7 +40,6 @@ export class ProcessingQueue {
         this.isRunning = false;
     }
     async runPipeline(task) {
-        this.store.queueProcessingJobs(task.sessionId);
         let latestOcrChunks = [];
         await this.runSingleJob(task.sessionId, "ocr", async () => {
             let framePaths = [];
