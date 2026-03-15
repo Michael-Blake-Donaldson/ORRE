@@ -53,6 +53,16 @@ const askBtn = document.getElementById("askBtn");
 const askConfidence = document.getElementById("askConfidence");
 const askAnswer = document.getElementById("askAnswer");
 const askCitations = document.getElementById("askCitations");
+const settingDefaultMode = document.getElementById("settingDefaultMode");
+const settingSourceStrategy = document.getElementById("settingSourceStrategy");
+const settingAskLimit = document.getElementById("settingAskLimit");
+const benchmarkQuestions = document.getElementById("benchmarkQuestions");
+const benchmarkLimit = document.getElementById("benchmarkLimit");
+const runBenchmarkBtn = document.getElementById("runBenchmarkBtn");
+const benchmarkOutput = document.getElementById("benchmarkOutput");
+const saveSettingsBtn = document.getElementById("saveSettingsBtn");
+const resetSettingsBtn = document.getElementById("resetSettingsBtn");
+const settingsStatus = document.getElementById("settingsStatus");
 const navButtons = Array.from(document.querySelectorAll(".nav-item[data-target], .nav-item[data-page]"));
 const diagBridgeLoaded = document.getElementById("diagBridgeLoaded");
 const diagSourceCount = document.getElementById("diagSourceCount");
@@ -109,6 +119,204 @@ function setupNavigation() {
 function setCategoryStatus(text) {
   if (categoryActionStatus) {
     categoryActionStatus.textContent = text;
+  }
+}
+
+function setSettingsStatus(text) {
+  if (settingsStatus) {
+    settingsStatus.textContent = text;
+  }
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function parseIntOrFallback(raw, fallback, min, max) {
+  const parsed = Number.parseInt(String(raw ?? "").trim(), 10);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return clamp(parsed, min, max);
+}
+
+function renderSettingsForm(settings) {
+  if (settingDefaultMode) {
+    settingDefaultMode.value = settings.defaultMode;
+  }
+
+  if (settingSourceStrategy) {
+    settingSourceStrategy.value = settings.sourceStrategy;
+  }
+
+  if (settingAskLimit) {
+    settingAskLimit.value = String(settings.askLimit);
+  }
+
+  if (benchmarkQuestions) {
+    benchmarkQuestions.value = settings.benchmarkQuestions;
+  }
+
+  if (benchmarkLimit) {
+    benchmarkLimit.value = String(settings.benchmarkLimit);
+  }
+}
+
+function readSettingsFromForm() {
+  return {
+    defaultMode:
+      settingDefaultMode?.value === "clip" || settingDefaultMode?.value === "always-on"
+        ? settingDefaultMode.value
+        : "session",
+    sourceStrategy: settingSourceStrategy?.value === "system-picker" ? "system-picker" : "remember-last",
+    askLimit: parseIntOrFallback(settingAskLimit?.value, 60, 20, 120),
+    benchmarkQuestions: (benchmarkQuestions?.value ?? "").trim() || currentSettings.benchmarkQuestions,
+    benchmarkLimit: parseIntOrFallback(benchmarkLimit?.value, 80, 20, 140),
+  };
+}
+
+async function loadSettings() {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
+  const settings = await api.getSettings();
+  currentSettings = settings;
+  renderSettingsForm(settings);
+
+  if (modeSelect) {
+    modeSelect.value = settings.defaultMode;
+  }
+
+  setSettingsStatus("Loaded saved settings.");
+}
+
+async function saveSettings() {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
+  const response = await api.updateSettings(readSettingsFromForm());
+  if (!response.ok) {
+    setSettingsStatus("Could not save settings.");
+    return;
+  }
+
+  currentSettings = response.settings;
+  renderSettingsForm(currentSettings);
+  if (modeSelect) {
+    modeSelect.value = currentSettings.defaultMode;
+  }
+
+  await refreshDisplaySources();
+  setSettingsStatus("Settings saved.");
+}
+
+async function resetSettingsToDefaults() {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
+  const response = await api.updateSettings({
+    defaultMode: "session",
+    sourceStrategy: "remember-last",
+    askLimit: 60,
+    benchmarkLimit: 80,
+    benchmarkQuestions: [
+      "What were the top 3 action items discussed?",
+      "What apps or tools were used most recently?",
+      "Summarize the latest decision that was made.",
+    ].join("\n"),
+  });
+
+  if (!response.ok) {
+    setSettingsStatus("Could not reset settings.");
+    return;
+  }
+
+  currentSettings = response.settings;
+  renderSettingsForm(currentSettings);
+  if (modeSelect) {
+    modeSelect.value = currentSettings.defaultMode;
+  }
+  await refreshDisplaySources();
+  setSettingsStatus("Settings reset to defaults.");
+}
+
+function renderBenchmarkResult(result) {
+  if (!benchmarkOutput) {
+    return;
+  }
+
+  if (!result.questionCount) {
+    benchmarkOutput.textContent = "No benchmark questions were provided.";
+    return;
+  }
+
+  const avgPercent = Math.round(result.avgConfidence * 100);
+  const lines = [
+    `Questions: ${result.questionCount}`,
+    `Average confidence: ${avgPercent}%`,
+    `Low confidence answers: ${result.lowConfidenceCount}`,
+    `Low modality coverage: ${result.lowCoverageCount}`,
+    "",
+    "Per question:",
+  ];
+
+  result.results.forEach((item, index) => {
+    const confidencePct = Math.round(item.confidenceScore * 100);
+    const modalities = item.modalityCoverage.length ? item.modalityCoverage.join(", ") : "none";
+    lines.push(
+      `${index + 1}. ${item.question}`,
+      `   - ${item.confidenceLabel.toUpperCase()} (${confidencePct}%), citations: ${item.citationCount}, modalities: ${modalities}`,
+    );
+  });
+
+  benchmarkOutput.textContent = lines.join("\n");
+}
+
+async function runBenchmarkNow() {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
+  const draft = readSettingsFromForm();
+  const questions = draft.benchmarkQuestions
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  if (!questions.length) {
+    renderBenchmarkResult({ questionCount: 0, results: [], avgConfidence: 0, lowConfidenceCount: 0, lowCoverageCount: 0 });
+    return;
+  }
+
+  if (runBenchmarkBtn) {
+    runBenchmarkBtn.disabled = true;
+  }
+
+  if (benchmarkOutput) {
+    benchmarkOutput.textContent = "Running benchmark...";
+  }
+
+  try {
+    const result = await api.runBenchmark(questions, draft.benchmarkLimit);
+    renderBenchmarkResult(result);
+    setSettingsStatus("Benchmark completed.");
+  } catch {
+    if (benchmarkOutput) {
+      benchmarkOutput.textContent = "Benchmark failed. Try again after processing completes.";
+    }
+    setSettingsStatus("Benchmark failed.");
+  } finally {
+    if (runBenchmarkBtn) {
+      runBenchmarkBtn.disabled = false;
+    }
   }
 }
 
@@ -183,6 +391,17 @@ let transcriptMatchCursor = -1;
 let activeTranscriptSourceFilter = "all";
 let replaySourceSessionId = null;
 let categoriesCache = [];
+let currentSettings = {
+  defaultMode: "session",
+  sourceStrategy: "remember-last",
+  askLimit: 60,
+  benchmarkQuestions: [
+    "What were the top 3 action items discussed?",
+    "What apps or tools were used most recently?",
+    "Summarize the latest decision that was made.",
+  ].join("\n"),
+  benchmarkLimit: 80,
+};
 
 const permissionState = {
   screen: localStorage.getItem("memora-permission-screen") === "granted" ? "granted" : "unknown",
@@ -261,8 +480,11 @@ async function refreshDisplaySources() {
   }
 
   const fallbackSourceId = sources[0]?.id ?? SYSTEM_PICKER_VALUE;
+  const useSystemPickerByDefault = currentSettings.sourceStrategy === "system-picker";
   const resolvedSourceId =
-    selectedDisplaySourceId && sources.some((source) => source.id === selectedDisplaySourceId)
+    useSystemPickerByDefault
+      ? SYSTEM_PICKER_VALUE
+      : selectedDisplaySourceId && sources.some((source) => source.id === selectedDisplaySourceId)
       ? selectedDisplaySourceId
       : fallbackSourceId;
 
@@ -881,7 +1103,7 @@ async function runAskMemora() {
   renderAskConfidence("medium", 0.5);
 
   try {
-    const result = await api.askMemora(question, 60);
+    const result = await api.askMemora(question, currentSettings.askLimit ?? 60);
     askAnswer.textContent = result.answer;
     renderAskConfidence(result.confidenceLabel, result.confidenceScore);
     renderAskCitations(result.citations);

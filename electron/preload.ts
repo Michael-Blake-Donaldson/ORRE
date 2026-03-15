@@ -84,6 +84,14 @@ type DisplaySourceRow = {
   type: "screen" | "window";
 };
 
+type AppSettings = {
+  defaultMode: "session" | "clip" | "always-on";
+  sourceStrategy: "remember-last" | "system-picker";
+  askLimit: number;
+  benchmarkQuestions: string;
+  benchmarkLimit: number;
+};
+
 const api = {
   getRecordingState: async () => {
     return ipcRenderer.invoke("recording:getState") as Promise<{
@@ -187,6 +195,29 @@ const api = {
   },
   setPreferredDisplaySource: async (sourceId: string | null) => {
     return ipcRenderer.invoke("ui:setPreferredDisplaySource", sourceId) as Promise<{ ok: boolean }>;
+  },
+  getSettings: async () => {
+    return ipcRenderer.invoke("settings:get") as Promise<AppSettings>;
+  },
+  updateSettings: async (updates: Partial<AppSettings>) => {
+    return ipcRenderer.invoke("settings:update", updates) as Promise<{ ok: boolean; settings: AppSettings }>;
+  },
+  runBenchmark: async (questions: string[], limit: number) => {
+    return ipcRenderer.invoke("benchmark:run", { questions, limit }) as Promise<{
+      questionCount: number;
+      avgConfidence: number;
+      lowConfidenceCount: number;
+      lowCoverageCount: number;
+      results: Array<{
+        question: string;
+        confidenceScore: number;
+        confidenceLabel: "low" | "medium" | "high";
+        citationCount: number;
+        modalityCoverage: Array<"audio" | "visual-transcript" | "ocr">;
+        hasAudioEvidence: boolean;
+        hasVisualEvidence: boolean;
+      }>;
+    }>;
   },
 };
 

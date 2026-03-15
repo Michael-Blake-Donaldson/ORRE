@@ -21,8 +21,8 @@
       <main class="workspace">
         <header id="topAnchor" class="topbar">
           <div>
-            <h1>Phase 1: Product Foundation</h1>
-            <p>Windows-first desktop shell with privacy-safe recording controls.</p>
+            <h1>Memora Dashboard</h1>
+            <p>Capture important moments, process them locally, and ask grounded questions with citations.</p>
           </div>
           <div class="recording-stack">
             <div id="recordingBadge" class="badge badge--idle">Not Recording</div>
@@ -92,13 +92,13 @@
           </article>
 
           <article class="panel panel--wide">
-            <h2>Build Roadmap Status</h2>
+            <h2>Quick Start</h2>
             <div class="checklist">
-              <label><input type="checkbox" checked disabled /> Phase 1 foundation shell</label>
-              <label><input type="checkbox" disabled /> Phase 2 capture pipeline</label>
-              <label><input type="checkbox" disabled /> Phase 3 OCR and transcription</label>
-              <label><input type="checkbox" disabled /> Phase 4 AI summary and notes</label>
-              <label><input type="checkbox" disabled /> Phase 5 search and retrieval</label>
+              <label><input type="checkbox" checked disabled /> Pick a capture source and start recording</label>
+              <label><input type="checkbox" checked disabled /> Save recording and allow processing to complete</label>
+              <label><input type="checkbox" checked disabled /> Inspect Session Health for modality coverage</label>
+              <label><input type="checkbox" checked disabled /> Ask Memora and open cited replay moments</label>
+              <label><input type="checkbox" checked disabled /> Organize sessions with categories in Library</label>
             </div>
           </article>
 
@@ -229,7 +229,57 @@
 
           <article id="settingsPanel" class="panel panel--wide">
             <h2>Settings</h2>
-            <p class="status">Current build includes capture, OCR pipeline, search, and diagnostics. More settings are coming next.</p>
+            <p class="status">Preferences are saved locally and applied on next interaction.</p>
+
+            <div class="settings-grid">
+              <div class="settings-card">
+                <h3>Capture Defaults</h3>
+                <div class="field-row">
+                  <label for="settingDefaultMode">Default Session Mode</label>
+                  <select id="settingDefaultMode">
+                    <option value="session">Manual Session</option>
+                    <option value="clip">Quick Clip</option>
+                    <option value="always-on">Always-On (Opt-In)</option>
+                  </select>
+                </div>
+                <div class="field-row">
+                  <label for="settingSourceStrategy">Source Selection</label>
+                  <select id="settingSourceStrategy">
+                    <option value="remember-last">Remember last selected source</option>
+                    <option value="system-picker">Always use system picker</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="settings-card">
+                <h3>Ask + Retrieval</h3>
+                <div class="field-row">
+                  <label for="settingAskLimit">Ask Retrieval Limit</label>
+                  <input id="settingAskLimit" type="text" inputmode="numeric" placeholder="60" />
+                </div>
+                <p class="status">Higher values search more chunks and may increase response time.</p>
+              </div>
+
+              <div class="settings-card settings-card--wide">
+                <h3>Benchmark Runner</h3>
+                <p class="status">Use this to track answer quality and modality coverage over time.</p>
+                <div class="field-row">
+                  <label for="benchmarkQuestions">Benchmark Questions (one per line)</label>
+                  <textarea id="benchmarkQuestions" rows="6"></textarea>
+                </div>
+                <div class="search-row">
+                  <input id="benchmarkLimit" type="text" inputmode="numeric" placeholder="80" />
+                  <button id="runBenchmarkBtn" class="button">Run Benchmark</button>
+                </div>
+                <div id="benchmarkOutput" class="summary-output">No benchmark run yet.</div>
+              </div>
+            </div>
+
+            <div class="button-row">
+              <button id="saveSettingsBtn" class="button button--primary">Save Settings</button>
+              <button id="resetSettingsBtn" class="button">Reset Defaults</button>
+            </div>
+            <p id="settingsStatus" class="status">Settings ready.</p>
           </article>
         </section>
       </main>

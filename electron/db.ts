@@ -141,6 +141,12 @@ export class MemoraStore {
 
       CREATE INDEX IF NOT EXISTS idx_chunks_session_id ON extracted_chunks(session_id);
       CREATE INDEX IF NOT EXISTS idx_chunks_type ON extracted_chunks(chunk_type);
+
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
     `);
 
     this.ensureSessionCategoryColumn();
@@ -358,27 +364,81 @@ export class MemoraStore {
        VALUES (@id, @session_id, @job_type, @status, @error_message, @started_at, @finished_at, @created_at)`,
     );
 
-    upsert.run({
-      id: `${sessionId}:ocr`,
-      session_id: sessionId,
-      job_type: "ocr",
-      status: "queued",
-      error_message: null,
-      started_at: null,
-      finished_at: null,
-      created_at: createdAt,
+    const tx = this.db.transaction(() => {
+      this.db.prepare(`DELETE FROM extracted_chunks WHERE session_id = ?`).run(sessionId);
+
+      if (this.ftsEnabled) {
+        this.db.prepare(`DELETE FROM extracted_chunks_fts WHERE session_id = ?`).run(sessionId);
+      }
+
+      upsert.run({
+        id: `${sessionId}:ocr`,
+        session_id: sessionId,
+        job_type: "ocr",
+        status: "queued",
+        error_message: null,
+        started_at: null,
+        finished_at: null,
+        created_at: createdAt,
+      });
+
+      upsert.run({
+        id: `${sessionId}:transcript`,
+        session_id: sessionId,
+        job_type: "transcript",
+        status: "queued",
+        error_message: null,
+        started_at: null,
+        finished_at: null,
+        created_at: createdAt,
+      });
     });
 
-    upsert.run({
-      id: `${sessionId}:transcript`,
-      session_id: sessionId,
-      job_type: "transcript",
-      status: "queued",
-      error_message: null,
-      started_at: null,
-      finished_at: null,
-      created_at: createdAt,
+    tx();
+  }
+
+  getSettings(): Record<string, unknown> {
+    const rows = this.db
+      .prepare(
+        `SELECT key, value
+         FROM app_settings`,
+      )
+      .all() as Array<{ key: string; value: string }>;
+
+    const out: Record<string, unknown> = {};
+    for (const row of rows) {
+      try {
+        out[row.key] = JSON.parse(row.value);
+      } catch {
+        out[row.key] = row.value;
+      }
+    }
+
+    return out;
+  }
+
+  updateSettings(updates: Record<string, unknown>) {
+    const now = new Date().toISOString();
+    const upsert = this.db.prepare(
+      `INSERT OR REPLACE INTO app_settings (key, value, updated_at)
+       VALUES (@key, @value, @updated_at)`,
+    );
+
+    const tx = this.db.transaction(() => {
+      for (const [key, value] of Object.entries(updates)) {
+        if (value === undefined) {
+          continue;
+        }
+
+        upsert.run({
+          key,
+          value: JSON.stringify(value),
+          updated_at: now,
+        });
+      }
     });
+
+    tx();
   }
 
   updateProcessingJob(
