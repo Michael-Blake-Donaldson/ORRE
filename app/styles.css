@@ -102,7 +102,21 @@ body::before {
   font-size: 25px;
   font-weight: 700;
   letter-spacing: 0.06em;
+}
+
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin-bottom: 24px;
+  padding: 6px 4px 10px;
+}
+
+.brand-logo {
+  width: 34px;
+  height: 34px;
+  display: block;
+  filter: drop-shadow(0 0 12px rgba(0, 194, 255, 0.28));
 }
 
 .nav-item {
