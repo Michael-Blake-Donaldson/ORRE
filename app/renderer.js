@@ -1504,14 +1504,14 @@ stopBtn.addEventListener("click", async () => {
   await stopRecordingFlow();
 });
 
-grantScreenBtn.addEventListener("click", async () => {
+grantScreenBtn?.addEventListener("click", async () => {
   const result = await requestScreenPermission();
   statusText.textContent = result.granted
     ? "Screen permission granted."
     : "Screen permission was not granted. You can still retry anytime.";
 });
 
-grantMicBtn.addEventListener("click", async () => {
+grantMicBtn?.addEventListener("click", async () => {
   const result = await requestMicPermission();
 
   if (result.granted) {
