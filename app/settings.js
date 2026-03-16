@@ -4,6 +4,10 @@ const settingAskLimit = document.getElementById("settingAskLimit");
 const saveSettingsBtn = document.getElementById("saveSettingsBtn");
 const resetSettingsBtn = document.getElementById("resetSettingsBtn");
 const settingsStatus = document.getElementById("settingsStatus");
+const grantScreenBtn = document.getElementById("grantScreenBtn");
+const grantMicBtn = document.getElementById("grantMicBtn");
+const screenPermissionStatus = document.getElementById("screenPermissionStatus");
+const micPermissionStatus = document.getElementById("micPermissionStatus");
 const navButtons = Array.from(document.querySelectorAll(".nav-item[data-page]"));
 const backToTopBtn = document.getElementById("backToTopBtn");
 
@@ -11,6 +15,11 @@ const DEFAULT_SETTINGS = {
   defaultMode: "session",
   sourceStrategy: "remember-last",
   askLimit: 60,
+};
+
+const permissionState = {
+  screen: localStorage.getItem("memora-permission-screen") === "granted" ? "granted" : "unknown",
+  mic: localStorage.getItem("memora-permission-mic") === "granted" ? "granted" : "unknown",
 };
 
 function getMemoraApi() {
@@ -27,6 +36,75 @@ function getMemoraApi() {
 function setStatus(text) {
   if (settingsStatus) {
     settingsStatus.textContent = text;
+  }
+}
+
+function persistPermissionState(key, state) {
+  if (state === "granted") {
+    localStorage.setItem(`memora-permission-${key}`, "granted");
+    return;
+  }
+
+  localStorage.removeItem(`memora-permission-${key}`);
+}
+
+function setPermissionStatus(element, state) {
+  if (!element) {
+    return;
+  }
+
+  element.classList.remove("status-inline--ok", "status-inline--warn", "status-inline--error");
+
+  if (state === "granted") {
+    element.textContent = "Granted";
+    element.classList.add("status-inline--ok");
+    return;
+  }
+
+  if (state === "denied") {
+    element.textContent = "Denied";
+    element.classList.add("status-inline--error");
+    return;
+  }
+
+  element.textContent = "Unknown";
+  element.classList.add("status-inline--warn");
+}
+
+function refreshPermissionUI() {
+  setPermissionStatus(screenPermissionStatus, permissionState.screen);
+  setPermissionStatus(micPermissionStatus, permissionState.mic);
+}
+
+async function requestScreenPermission() {
+  try {
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+    stream.getTracks().forEach((track) => track.stop());
+    permissionState.screen = "granted";
+    persistPermissionState("screen", "granted");
+    refreshPermissionUI();
+    return { granted: true, reason: "granted" };
+  } catch (error) {
+    permissionState.screen = error?.name === "NotAllowedError" ? "denied" : "unknown";
+    persistPermissionState("screen", permissionState.screen);
+    refreshPermissionUI();
+    return { granted: false, reason: error?.name ?? "unknown" };
+  }
+}
+
+async function requestMicPermission() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    stream.getTracks().forEach((track) => track.stop());
+    permissionState.mic = "granted";
+    persistPermissionState("mic", "granted");
+    refreshPermissionUI();
+    return { granted: true, reason: "granted" };
+  } catch (error) {
+    permissionState.mic = error?.name === "NotAllowedError" ? "denied" : "unknown";
+    persistPermissionState("mic", permissionState.mic);
+    refreshPermissionUI();
+    return { granted: false, reason: error?.name ?? "unknown" };
   }
 }
 
@@ -157,8 +235,29 @@ resetSettingsBtn?.addEventListener("click", async () => {
   await resetSettingsToDefaults();
 });
 
+grantScreenBtn?.addEventListener("click", async () => {
+  const result = await requestScreenPermission();
+  setStatus(result.granted ? "Screen permission granted." : "Screen permission was not granted. You can retry anytime.");
+});
+
+grantMicBtn?.addEventListener("click", async () => {
+  const result = await requestMicPermission();
+  if (result.granted) {
+    setStatus("Microphone permission granted.");
+    return;
+  }
+
+  if (result.reason === "NotFoundError") {
+    setStatus("No microphone device detected. Screen recording still works.");
+    return;
+  }
+
+  setStatus("Microphone access not granted. Screen recording still works without mic.");
+});
+
 setupNavigation();
 setupBackToTop();
+refreshPermissionUI();
 loadSettings().catch((error) => {
   setStatus("Could not load settings.");
   console.error(error);

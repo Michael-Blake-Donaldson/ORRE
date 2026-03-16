@@ -65,44 +65,6 @@
             <p id="statusText" class="status" aria-live="polite">Ready. Recording is off by default.</p>
           </article>
 
-          <article class="panel">
-            <h2>Privacy Defaults</h2>
-            <ul>
-              <li>Recording starts only on manual action.</li>
-              <li>Persistent recording state indicator is always visible.</li>
-              <li>Always-on mode is visible and explicit.</li>
-              <li>Raw capture is available in this phase, AI processing is next.</li>
-            </ul>
-          </article>
-
-          <article class="panel">
-            <h2>Permissions</h2>
-            <p>Grant once so capture can start smoothly when you record.</p>
-
-            <div class="permission-row">
-              <button id="grantScreenBtn" class="button">Grant Screen Permission</button>
-              <span id="screenPermissionStatus" class="status-inline">Unknown</span>
-            </div>
-
-            <div class="permission-row">
-              <button id="grantMicBtn" class="button">Grant Microphone Permission</button>
-              <span id="micPermissionStatus" class="status-inline">Unknown</span>
-            </div>
-
-            <p class="status">Windows still asks what screen/window to share each recording for safety.</p>
-          </article>
-
-          <article class="panel panel--wide">
-            <h2>Quick Start</h2>
-            <div class="checklist">
-              <label><input type="checkbox" checked disabled /> Pick a capture source and start recording</label>
-              <label><input type="checkbox" checked disabled /> Save recording and allow processing to complete</label>
-              <label><input type="checkbox" checked disabled /> Inspect Session Health for modality coverage</label>
-              <label><input type="checkbox" checked disabled /> Ask Memora and open cited replay moments</label>
-              <label><input type="checkbox" checked disabled /> Organize sessions with categories in Library</label>
-            </div>
-          </article>
-
           <article id="libraryPanel" class="panel panel--wide">
             <h2>Recent Sessions</h2>
             <ul id="recentSessions" class="session-list session-list--selectable"></ul>
