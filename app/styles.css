@@ -3,15 +3,19 @@
   --bg: #0b0b0b;
   --surface: #141414;
   --surface-alt: #101010;
+  --surface-soft: #181818;
   --border: #1f1f1f;
+  --border-strong: rgba(255, 255, 255, 0.08);
   --text: #ffffff;
   --text-muted: #9ca3af;
+  --text-soft: #c4cad4;
   --accent-primary: #00c2ff;
   --accent-secondary: #00e5c3;
   --danger: #ff6a7e;
   --hover-glow: rgba(0, 194, 255, 0.5);
   --card-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
   --card-shadow-hover: 0 20px 42px rgba(0, 0, 0, 0.55);
+  --inset-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.03);
   --radius-card: 16px;
   --radius-control: 12px;
   --ease-premium: cubic-bezier(0.25, 0.8, 0.25, 1);
@@ -33,6 +37,7 @@ body {
   margin: 0;
   font-family: "Inter", "Space Grotesk", "Poppins", "Segoe UI", sans-serif;
   font-weight: 500;
+  line-height: 1.5;
   letter-spacing: 0.01em;
   color: var(--text);
   background:
@@ -40,6 +45,19 @@ body {
     radial-gradient(900px 420px at 100% 0%, rgba(0, 229, 195, 0.09), transparent 58%),
     var(--bg);
   animation: page-enter var(--anim-slow) var(--ease-premium) both;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(circle at center, black 35%, transparent 95%);
+  opacity: 0.12;
 }
 
 @keyframes page-enter {
@@ -126,6 +144,7 @@ body {
 
 .workspace {
   padding: 28px;
+  max-width: 1600px;
 }
 
 .topbar {
@@ -144,13 +163,16 @@ body {
 
 .topbar h1 {
   margin: 0;
-  font-size: 30px;
+  font-size: clamp(2rem, 3vw, 2.5rem);
   font-weight: 700;
+  line-height: 1.05;
+  text-wrap: balance;
 }
 
 .topbar p {
   margin: 8px 0 0;
   color: var(--text-muted);
+  max-width: 62ch;
 }
 
 .recording-stack {
@@ -255,7 +277,7 @@ body {
 .grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: 18px;
 }
 
 .panel {
@@ -266,18 +288,65 @@ body {
     linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent 35%),
     var(--surface);
   padding: 18px;
-  box-shadow: var(--card-shadow);
+  box-shadow: var(--inset-highlight), var(--card-shadow);
   transition:
     border-color var(--anim-mid) var(--ease-premium),
     transform var(--anim-mid) var(--ease-premium),
     box-shadow var(--anim-mid) var(--ease-premium),
     background var(--anim-mid) var(--ease-premium);
+  overflow: hidden;
+}
+
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(135deg, rgba(0, 194, 255, 0.06), transparent 24%, transparent 75%, rgba(0, 229, 195, 0.05));
+  opacity: 0;
+  transition: opacity var(--anim-mid) var(--ease-premium);
 }
 
 .panel:hover {
   transform: translateY(-2px);
   border-color: rgba(0, 194, 255, 0.35);
   box-shadow: var(--card-shadow-hover), 0 0 0 1px rgba(0, 194, 255, 0.08);
+}
+
+.panel:hover::before {
+  opacity: 1;
+}
+
+.grid > .panel {
+  animation: card-enter var(--anim-mid) var(--ease-premium) both;
+}
+
+.grid > .panel:nth-child(2) {
+  animation-delay: 35ms;
+}
+
+.grid > .panel:nth-child(3) {
+  animation-delay: 70ms;
+}
+
+.grid > .panel:nth-child(4) {
+  animation-delay: 105ms;
+}
+
+.grid > .panel:nth-child(5) {
+  animation-delay: 140ms;
+}
+
+@keyframes card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .panel--wide {
@@ -287,12 +356,22 @@ body {
 .panel h2 {
   margin-top: 0;
   font-size: 1.16rem;
+  margin-bottom: 0.55rem;
 }
 
 .panel h3 {
   margin-top: 0;
   margin-bottom: 10px;
   font-size: 0.98rem;
+}
+
+.panel p,
+.panel li,
+.panel div,
+.session-card__meta,
+.status,
+.status-inline {
+  text-wrap: pretty;
 }
 
 .panel-header {
@@ -347,6 +426,7 @@ select {
   padding: 10px;
   color: var(--text);
   background: var(--surface-alt);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
   transition:
     border-color var(--anim-fast) ease-out,
     box-shadow var(--anim-fast) ease-out,
@@ -358,7 +438,7 @@ textarea:focus,
 select:focus {
   outline: none;
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 2px rgba(0, 194, 255, 0.18), 0 0 18px rgba(0, 194, 255, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02), 0 0 0 2px rgba(0, 194, 255, 0.18), 0 0 18px rgba(0, 194, 255, 0.14);
 }
 
 textarea {
@@ -440,6 +520,17 @@ textarea {
   background: linear-gradient(135deg, var(--accent-primary), #60dfff);
 }
 
+.button:focus-visible,
+.nav-item:focus-visible,
+input[type="text"]:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+.cue-item:focus-visible,
+.session-list--selectable li:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(0, 194, 255, 0.25), 0 0 0 5px rgba(0, 194, 255, 0.08);
+}
+
 .button--mini {
   padding: 6px 10px;
   font-size: 12px;
@@ -488,6 +579,7 @@ textarea {
   padding: 12px;
   line-height: 1.45;
   white-space: pre-wrap;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
 }
 
 .health-shell {
@@ -588,7 +680,7 @@ textarea {
 .settings-card {
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent 40%), var(--surface);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 40%), var(--surface-soft);
   padding: 14px;
 }
 
@@ -744,6 +836,7 @@ ul {
 .session-list .meta {
   color: var(--text);
   font-size: 14px;
+  margin-bottom: 4px;
 }
 
 .session-list--selectable li {
@@ -777,7 +870,7 @@ ul {
 .session-card {
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent 40%), var(--surface);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent 40%), var(--surface);
   padding: 12px;
   display: grid;
   gap: 8px;
@@ -802,6 +895,38 @@ ul {
 .session-card__meta {
   color: var(--text-muted);
   font-size: 13px;
+}
+
+.brand,
+.topbar h1 {
+  background: linear-gradient(135deg, #ffffff 0%, #b6ecff 45%, #a7fff0 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+::selection {
+  background: rgba(0, 194, 255, 0.3);
+  color: var(--text);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(0, 194, 255, 0.55), rgba(0, 229, 195, 0.42));
+  border-radius: 999px;
+  border: 2px solid rgba(11, 11, 11, 0.9);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(0, 194, 255, 0.72), rgba(0, 229, 195, 0.62));
 }
 
 .session-card__row {
@@ -917,6 +1042,10 @@ ul {
 
   .workspace {
     padding: 18px;
+  }
+
+  .topbar {
+    flex-direction: column;
   }
 
   .nav-rail {
