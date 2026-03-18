@@ -9,49 +9,73 @@
   </head>
   <body>
     <main class="auth-shell">
-      <section class="auth-card panel">
-        <div class="brand-lockup auth-brand-lockup">
-          <img class="brand-logo" src="./assets/memora-logo.png" alt="Memora logo" />
-          <div class="brand">Memora</div>
-        </div>
-
-        <h1>Sign In</h1>
-        <p class="status">Create an account or log in to keep recordings and settings private to your profile.</p>
-
-        <div class="auth-tabs">
-          <button id="showLoginBtn" class="button button--mini button--primary" type="button">Login</button>
-          <button id="showRegisterBtn" class="button button--mini" type="button">Register</button>
-        </div>
-
-        <form id="loginForm" class="auth-form">
-          <div class="field-row">
-            <label for="loginEmail">Email</label>
-            <input id="loginEmail" type="email" autocomplete="username" required />
+      <section class="auth-card auth-card--split">
+        <aside class="auth-visual">
+          <div class="auth-visual__chrome">
+            <span>Memora Experience</span>
+            <button class="auth-visual__pill" type="button" disabled>Desktop Native</button>
           </div>
-          <div class="field-row">
-            <label for="loginPassword">Password</label>
-            <input id="loginPassword" type="password" autocomplete="current-password" required />
+          <div class="auth-visual__image" role="img" aria-label="Decorative visual placeholder"></div>
+          <div class="auth-visual__caption">Capturing Moments, Creating Memories</div>
+          <div class="auth-visual__dots" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span class="is-active"></span>
           </div>
-          <button class="button button--primary" type="submit">Login</button>
-        </form>
+        </aside>
 
-        <form id="registerForm" class="auth-form auth-form--hidden">
-          <div class="field-row">
-            <label for="registerName">Display Name</label>
-            <input id="registerName" type="text" autocomplete="name" required />
+        <section class="auth-pane">
+          <div class="auth-pane__logo brand-lockup">
+            <img class="brand-logo" src="./assets/memora-logo.png" alt="Memora logo" />
+            <div class="brand">Memora</div>
           </div>
-          <div class="field-row">
-            <label for="registerEmail">Email</label>
-            <input id="registerEmail" type="email" autocomplete="username" required />
-          </div>
-          <div class="field-row">
-            <label for="registerPassword">Password</label>
-            <input id="registerPassword" type="password" autocomplete="new-password" minlength="8" required />
-          </div>
-          <button class="button button--primary" type="submit">Create Account</button>
-        </form>
 
-        <p id="authStatus" class="status">Ready.</p>
+          <h1 id="authTitle" class="auth-title">Create an account</h1>
+          <p class="auth-copy">Your sessions, categories, and settings stay private to your account.</p>
+
+          <p class="auth-switchline">
+            <span id="authSwitchPrompt">Already have an account?</span>
+            <button id="switchInlineBtn" class="auth-link-btn" type="button">Log in</button>
+          </p>
+
+          <div class="auth-tabs" role="tablist" aria-label="Authentication mode">
+            <button id="showRegisterBtn" class="button button--mini button--primary" type="button">Register</button>
+            <button id="showLoginBtn" class="button button--mini" type="button">Login</button>
+          </div>
+
+          <form id="registerForm" class="auth-form">
+            <div class="auth-name-row">
+              <input id="registerFirstName" type="text" autocomplete="given-name" placeholder="First name" required />
+              <input id="registerLastName" type="text" autocomplete="family-name" placeholder="Last name" required />
+            </div>
+            <input id="registerEmail" type="email" autocomplete="username" placeholder="Email" required />
+            <input id="registerPassword" type="password" autocomplete="new-password" minlength="8" placeholder="Create password" required />
+            <label class="auth-checkbox">
+              <input id="registerTerms" type="checkbox" required />
+              <span>I agree to the Terms and Conditions</span>
+            </label>
+            <button class="button button--primary auth-submit" type="submit">Create Account</button>
+          </form>
+
+          <form id="loginForm" class="auth-form auth-form--hidden">
+            <input id="loginEmail" type="email" autocomplete="username" placeholder="Email" required />
+            <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Enter your password" required />
+            <button class="button button--primary auth-submit" type="submit">Login</button>
+          </form>
+
+          <div class="auth-divider" aria-hidden="true">
+            <span></span>
+            <p>or continue with</p>
+            <span></span>
+          </div>
+
+          <div class="auth-social-row">
+            <button class="button auth-social" type="button" disabled>Google</button>
+            <button class="button auth-social" type="button" disabled>Apple</button>
+          </div>
+
+          <p id="authStatus" class="status auth-status">Ready.</p>
+        </section>
       </section>
     </main>
 
