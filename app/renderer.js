@@ -636,89 +636,68 @@ function startRecordingTimer() {
   stopRecordingTimer();
   recordingStartedMs = Date.now();
 
-  if (searchResults) {
-    searchResults.innerHTML = "<li>Type a query to search OCR and transcript memory.</li>";
+  const syncTimer = () => {
+    if (!recordingTimer || !recordingStartedMs) {
+      return;
+    }
+
+    recordingTimer.textContent = formatElapsed(Date.now() - recordingStartedMs);
+  };
+
+  syncTimer();
+  recordingTimerInterval = setInterval(syncTimer, 1000);
+}
+
+function formatJobDuration(startedAt, finishedAt) {
+  if (!startedAt || !finishedAt) {
+    return null;
   }
 
-  if (askCitations) {
-    askCitations.innerHTML = "<li>No citations available for this answer.</li>";
+  const startMs = Date.parse(startedAt);
+  const endMs = Date.parse(finishedAt);
+
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+    return null;
   }
 
-  if (saveSettingsBtn) {
-    saveSettingsBtn.addEventListener("click", async () => {
-      await saveSettings();
-    });
+  return formatElapsed(endMs - startMs);
+}
+
+function createStatusChip(status) {
+  const map = {
+    queued: "chip chip--queued",
+    running: "chip chip--running",
+    completed: "chip chip--completed",
+    failed: "chip chip--failed",
+    recording: "chip chip--running",
+    stopped: "chip chip--queued",
+    saved: "chip chip--completed",
+  };
+
+  const css = map[status] ?? "chip chip--queued";
+  return `<span class="${css}">${status}</span>`;
+}
+
+function renderSessionHealth(detail) {
+  if (!sessionHealth) {
+    return;
   }
 
-  if (resetSettingsBtn) {
-    resetSettingsBtn.addEventListener("click", async () => {
-      await resetSettingsToDefaults();
-    });
+  const health = detail?.health;
+  if (!health) {
+    sessionHealth.innerHTML = `<div class="health-shell__empty">Select a session to inspect coverage, job health, and failures.</div>`;
+    return;
   }
 
-  if (runBenchmarkBtn) {
+  const audioState = health.has_audio_evidence ? "Available" : "Missing";
+  const visualState = health.has_visual_evidence ? "Available" : "Missing";
+  const latestError = health.latest_error
+    ? `<div class="health-callout health-callout--error"><div class="health-callout__label">Latest failure</div><div>${health.latest_error}</div></div>`
+    : `<div class="health-callout"><div class="health-callout__label">Latest failure</div><div>None</div></div>`;
 
   sessionHealth.innerHTML = `
     <div class="health-status-row">
       <div class="health-status health-status--${health.status}">
-
-  setupNavigation();
-  setupBackToTop();
-
-  ensureAuthenticated()
-    .then((authenticated) => {
-      if (!authenticated) {
-        return;
-      }
-
-      refreshState().catch((error) => {
-        statusText.textContent = "Failed to load recording state.";
-        console.error(error);
-      });
-
-      refreshSessions().catch((error) => {
-        if (recentSessions) {
-          recentSessions.innerHTML = "<li>Could not load sessions.</li>";
-        }
-        console.error(error);
-      });
-
-      refreshPermissionUI();
-      refreshDiagnosticsUI();
-      setActiveChunkFilter("all");
-      setActiveTranscriptSourceFilter("all");
-
-      loadSettings().catch((error) => {
-        setSettingsStatus("Could not load settings.");
-        console.error(error);
-      });
-
-      renderCategorySelectOptions(null);
-      setCategoryStatus("Create categories and assign them to organize recordings.");
-      if (assignCategoryBtn) {
-        assignCategoryBtn.disabled = true;
-      }
-      if (deleteSessionBtn) {
-        deleteSessionBtn.disabled = true;
-      }
-
-      refreshCategories().catch((error) => {
-        setCategoryStatus("Could not load categories.");
-        console.error(error);
-      });
-
-      refreshDisplaySources().catch((error) => {
-        statusText.textContent = "Could not load capture sources.";
-        diagnostics.lastCaptureError = error?.name ?? "source-list-failed";
-        refreshDiagnosticsUI();
-        persistDiagnosticsState();
-        console.error(error);
-      });
-    })
-    .catch((error) => {
-      statusText.textContent = "Could not verify account session.";
-      console.error(error);
-    });
         <div class="health-status__eyebrow">Overall</div>
         <div class="health-status__title">${health.status_label}</div>
         <div class="health-status__text">${health.summary}</div>
@@ -1930,47 +1909,63 @@ generateSummaryBtn.addEventListener("click", async () => {
   }
 });
 
-refreshState().catch((error) => {
-  statusText.textContent = "Failed to load recording state.";
-  console.error(error);
-});
-
-refreshSessions().catch((error) => {
-  if (recentSessions) {
-    recentSessions.innerHTML = "<li>Could not load sessions.</li>";
-  }
-  console.error(error);
-});
-
-refreshPermissionUI();
-refreshDiagnosticsUI();
 setupNavigation();
 setupBackToTop();
-setActiveChunkFilter("all");
-setActiveTranscriptSourceFilter("all");
-loadSettings().catch((error) => {
-  setSettingsStatus("Could not load settings.");
-  console.error(error);
-});
-renderCategorySelectOptions(null);
-setCategoryStatus("Create categories and assign them to organize recordings.");
-if (assignCategoryBtn) {
-  assignCategoryBtn.disabled = true;
-}
-if (deleteSessionBtn) {
-  deleteSessionBtn.disabled = true;
-}
-refreshCategories().catch((error) => {
-  setCategoryStatus("Could not load categories.");
-  console.error(error);
-});
-refreshDisplaySources().catch((error) => {
-  statusText.textContent = "Could not load capture sources.";
-  diagnostics.lastCaptureError = error?.name ?? "source-list-failed";
-  refreshDiagnosticsUI();
-  persistDiagnosticsState();
-  console.error(error);
-});
+
+ensureAuthenticated()
+  .then((authenticated) => {
+    if (!authenticated) {
+      return;
+    }
+
+    refreshState().catch((error) => {
+      statusText.textContent = "Failed to load recording state.";
+      console.error(error);
+    });
+
+    refreshSessions().catch((error) => {
+      if (recentSessions) {
+        recentSessions.innerHTML = "<li>Could not load sessions.</li>";
+      }
+      console.error(error);
+    });
+
+    refreshPermissionUI();
+    refreshDiagnosticsUI();
+    setActiveChunkFilter("all");
+    setActiveTranscriptSourceFilter("all");
+
+    loadSettings().catch((error) => {
+      setSettingsStatus("Could not load settings.");
+      console.error(error);
+    });
+
+    renderCategorySelectOptions(null);
+    setCategoryStatus("Create categories and assign them to organize recordings.");
+    if (assignCategoryBtn) {
+      assignCategoryBtn.disabled = true;
+    }
+    if (deleteSessionBtn) {
+      deleteSessionBtn.disabled = true;
+    }
+
+    refreshCategories().catch((error) => {
+      setCategoryStatus("Could not load categories.");
+      console.error(error);
+    });
+
+    refreshDisplaySources().catch((error) => {
+      statusText.textContent = "Could not load capture sources.";
+      diagnostics.lastCaptureError = error?.name ?? "source-list-failed";
+      refreshDiagnosticsUI();
+      persistDiagnosticsState();
+      console.error(error);
+    });
+  })
+  .catch((error) => {
+    statusText.textContent = "Could not verify account session.";
+    console.error(error);
+  });
 
 if (searchResults) {
   searchResults.innerHTML = "<li>Type a query to search OCR and transcript memory.</li>";
