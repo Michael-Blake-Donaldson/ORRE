@@ -8,7 +8,7 @@ const grantScreenBtn = document.getElementById("grantScreenBtn");
 const grantMicBtn = document.getElementById("grantMicBtn");
 const screenPermissionStatus = document.getElementById("screenPermissionStatus");
 const micPermissionStatus = document.getElementById("micPermissionStatus");
-const navButtons = Array.from(document.querySelectorAll(".nav-item[data-page]"));
+const navButtons = Array.from(document.querySelectorAll(".nav-item[data-page], .nav-item[data-action]"));
 const backToTopBtn = document.getElementById("backToTopBtn");
 const diagBridgeLoaded = document.getElementById("diagBridgeLoaded");
 const diagSourceCount = document.getElementById("diagSourceCount");
@@ -252,6 +252,18 @@ async function resetSettingsToDefaults() {
 function setupNavigation() {
   navButtons.forEach((button) => {
     button.addEventListener("click", () => {
+      const action = button.getAttribute("data-action");
+      if (action === "logout") {
+        const api = getMemoraApi();
+        if (api) {
+          api.logoutUser().catch(() => {
+            // Continue to auth page even if logout IPC fails.
+          });
+        }
+        window.location.href = "./auth.html";
+        return;
+      }
+
       const page = button.getAttribute("data-page");
       if (!page) {
         return;
@@ -270,6 +282,21 @@ function setupNavigation() {
       }
     });
   });
+}
+
+async function ensureAuthenticated() {
+  const api = getMemoraApi();
+  if (!api) {
+    return false;
+  }
+
+  const user = await api.getCurrentUser();
+  if (!user) {
+    window.location.href = "./auth.html";
+    return false;
+  }
+
+  return true;
 }
 
 function setupBackToTop() {
@@ -327,13 +354,25 @@ grantMicBtn?.addEventListener("click", async () => {
 setupNavigation();
 setupBackToTop();
 refreshPermissionUI();
-loadSettings().catch((error) => {
-  setStatus("Could not load settings.");
-  console.error(error);
-});
 
-refreshDiagnostics().catch((error) => {
-  diagnostics.lastCaptureError = error?.name ?? "diagnostics-unavailable";
-  refreshDiagnosticsUI();
-  console.error(error);
-});
+ensureAuthenticated()
+  .then((authenticated) => {
+    if (!authenticated) {
+      return;
+    }
+
+    loadSettings().catch((error) => {
+      setStatus("Could not load settings.");
+      console.error(error);
+    });
+
+    refreshDiagnostics().catch((error) => {
+      diagnostics.lastCaptureError = error?.name ?? "diagnostics-unavailable";
+      refreshDiagnosticsUI();
+      console.error(error);
+    });
+  })
+  .catch((error) => {
+    setStatus("Could not verify account session.");
+    console.error(error);
+  });

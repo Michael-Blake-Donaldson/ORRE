@@ -1,5 +1,17 @@
 import { contextBridge, ipcRenderer } from "electron";
 const api = {
+    getCurrentUser: async () => {
+        return ipcRenderer.invoke("auth:getCurrentUser");
+    },
+    registerUser: async (payload) => {
+        return ipcRenderer.invoke("auth:register", payload);
+    },
+    loginUser: async (payload) => {
+        return ipcRenderer.invoke("auth:login", payload);
+    },
+    logoutUser: async () => {
+        return ipcRenderer.invoke("auth:logout");
+    },
     getRecordingState: async () => {
         return ipcRenderer.invoke("recording:getState");
     },

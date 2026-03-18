@@ -2,6 +2,7 @@ import { app, BrowserWindow, desktopCapturer, ipcMain, session } from "electron"
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 import { promises as fs } from "node:fs";
+import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { dialog } from "electron";
 import { createDb } from "./db.js";
 import { ProcessingQueue } from "./processing.js";
@@ -14,6 +15,7 @@ let recordingMode = "idle";
 let recordingStartedAt = null;
 let activeSessionId = null;
 let preferredDisplaySourceId = null;
+let activeUserId = null;
 const store = createDb(app.getPath("userData"));
 const processingQueue = new ProcessingQueue(store);
 const DEFAULT_SETTINGS = {
@@ -27,6 +29,36 @@ const DEFAULT_SETTINGS = {
     ].join("\n"),
     benchmarkLimit: 80,
 };
+function normalizeEmail(input) {
+    return input.trim().toLowerCase();
+}
+function toAuthUser(row) {
+    return {
+        id: row.id,
+        email: row.email,
+        displayName: row.display_name,
+    };
+}
+function hashPassword(password, saltHex) {
+    const salt = saltHex ? Buffer.from(saltHex, "hex") : randomBytes(16);
+    const hash = scryptSync(password, salt, 64);
+    return {
+        hashHex: hash.toString("hex"),
+        saltHex: salt.toString("hex"),
+    };
+}
+function verifyPassword(password, expectedHashHex, saltHex) {
+    const next = hashPassword(password, saltHex);
+    const left = Buffer.from(next.hashHex, "hex");
+    const right = Buffer.from(expectedHashHex, "hex");
+    if (left.length !== right.length) {
+        return false;
+    }
+    return timingSafeEqual(left, right);
+}
+function getActiveUserId() {
+    return activeUserId;
+}
 function parseSettings(raw) {
     const merged = {
         ...DEFAULT_SETTINGS,
@@ -47,12 +79,12 @@ function parseSettings(raw) {
     }
     return merged;
 }
-function runBenchmark(questionList, limit) {
+function runBenchmark(userId, questionList, limit) {
     const questions = questionList.map((q) => q.trim()).filter((q) => q.length >= 4);
     const results = questions.map((question) => {
-        const primaryRows = store.searchExtractedContent(question, limit);
-        const transcriptRows = store.listRecentExtractedRows(limit * 2, "transcript");
-        const ocrRows = store.listRecentExtractedRows(limit * 2, "ocr");
+        const primaryRows = store.searchExtractedContent(userId, question, limit);
+        const transcriptRows = store.listRecentExtractedRows(userId, limit * 2, "transcript");
+        const ocrRows = store.listRecentExtractedRows(userId, limit * 2, "ocr");
         const mergedMap = new Map();
         for (const row of [...primaryRows, ...transcriptRows, ...ocrRows]) {
             if (!mergedMap.has(row.chunk_id)) {
@@ -113,7 +145,7 @@ function createWindow() {
             sandbox: false,
         },
     });
-    mainWindow.loadFile(path.resolve(__dirname, "../app/index.html"));
+    mainWindow.loadFile(path.resolve(__dirname, "../app/auth.html"));
     mainWindow.on("closed", () => {
         mainWindow = null;
     });
@@ -151,17 +183,104 @@ app.on("window-all-closed", () => {
     }
 });
 ipcMain.handle("recording:getState", async () => {
+    const userId = getActiveUserId();
     return {
         mode: recordingMode,
-        isRecording: recordingMode !== "idle",
+        isRecording: recordingMode !== "idle" && Boolean(userId),
     };
 });
+ipcMain.handle("auth:getCurrentUser", async () => {
+    const userId = getActiveUserId();
+    if (!userId) {
+        return null;
+    }
+    const user = store.getUserById(userId);
+    if (!user) {
+        activeUserId = null;
+        return null;
+    }
+    return toAuthUser(user);
+});
+ipcMain.handle("auth:register", async (_event, payload) => {
+    const email = normalizeEmail(payload.email ?? "");
+    const password = String(payload.password ?? "");
+    const displayName = String(payload.displayName ?? "").trim();
+    if (!email || !email.includes("@")) {
+        return { ok: false, reason: "Enter a valid email address." };
+    }
+    if (password.length < 8) {
+        return { ok: false, reason: "Password must be at least 8 characters." };
+    }
+    if (!displayName || displayName.length < 2) {
+        return { ok: false, reason: "Display name must be at least 2 characters." };
+    }
+    if (store.getUserByEmail(email)) {
+        return { ok: false, reason: "An account with this email already exists." };
+    }
+    const createdAt = new Date().toISOString();
+    const userId = crypto.randomUUID();
+    const passwordData = hashPassword(password);
+    store.createUser({
+        id: userId,
+        email,
+        displayName,
+        passwordHash: passwordData.hashHex,
+        passwordSalt: passwordData.saltHex,
+        createdAt,
+    });
+    activeUserId = userId;
+    recordingMode = "idle";
+    recordingStartedAt = null;
+    activeSessionId = null;
+    return {
+        ok: true,
+        user: {
+            id: userId,
+            email,
+            displayName,
+        },
+    };
+});
+ipcMain.handle("auth:login", async (_event, payload) => {
+    const email = normalizeEmail(payload.email ?? "");
+    const password = String(payload.password ?? "");
+    const user = store.getUserByEmail(email);
+    if (!user) {
+        return { ok: false, reason: "Invalid email or password." };
+    }
+    const verified = verifyPassword(password, user.password_hash, user.password_salt);
+    if (!verified) {
+        return { ok: false, reason: "Invalid email or password." };
+    }
+    activeUserId = user.id;
+    recordingMode = "idle";
+    recordingStartedAt = null;
+    activeSessionId = null;
+    store.setUserLastLoginAt(user.id, new Date().toISOString());
+    return {
+        ok: true,
+        user: toAuthUser(user),
+    };
+});
+ipcMain.handle("auth:logout", async () => {
+    activeUserId = null;
+    recordingMode = "idle";
+    recordingStartedAt = null;
+    activeSessionId = null;
+    preferredDisplaySourceId = null;
+    return { ok: true };
+});
 ipcMain.handle("recording:start", async (_event, mode) => {
+    const userId = getActiveUserId();
+    if (!userId) {
+        return { ok: false, reason: "auth-required" };
+    }
     recordingMode = mode;
     recordingStartedAt = new Date().toISOString();
     activeSessionId = crypto.randomUUID();
     store.createSession({
         id: activeSessionId,
+        userId,
         mode: mode,
         startedAt: recordingStartedAt,
     });
@@ -173,12 +292,17 @@ ipcMain.handle("recording:start", async (_event, mode) => {
     };
 });
 ipcMain.handle("recording:stop", async () => {
+    const userId = getActiveUserId();
+    if (!userId) {
+        return { ok: false, reason: "auth-required", sessionId: null, stoppedAt: new Date().toISOString(), startedAt: null };
+    }
     recordingMode = "idle";
     const stoppedAt = new Date().toISOString();
     const stoppedSessionId = activeSessionId;
     if (stoppedSessionId) {
         store.stopSession({
             id: stoppedSessionId,
+            userId,
             stoppedAt,
         });
     }
@@ -194,6 +318,10 @@ ipcMain.handle("recording:stop", async () => {
     return response;
 });
 ipcMain.handle("recording:save", async (_event, payload) => {
+    const userId = getActiveUserId();
+    if (!userId) {
+        return { ok: false, reason: "auth-required" };
+    }
     if (!mainWindow) {
         return { ok: false, reason: "window-unavailable" };
     }
@@ -208,6 +336,7 @@ ipcMain.handle("recording:save", async (_event, payload) => {
     await fs.writeFile(result.filePath, Buffer.from(payload.bytes));
     store.markSessionSaved({
         id: payload.sessionId,
+        userId,
         filePath: result.filePath,
     });
     // Queue asynchronous extraction work so UI is responsive.
@@ -215,17 +344,38 @@ ipcMain.handle("recording:save", async (_event, payload) => {
     return { ok: true, filePath: result.filePath };
 });
 ipcMain.handle("sessions:list", async () => {
-    const rows = store.listSessions(20);
+    const userId = getActiveUserId();
+    if (!userId) {
+        return [];
+    }
+    const rows = store.listSessions(userId, 20);
     return rows;
 });
 ipcMain.handle("sessions:listByCategory", async (_event, payload) => {
-    return store.listSessionsByCategory(payload.categoryId ?? null, payload.limit ?? 200);
+    const userId = getActiveUserId();
+    if (!userId) {
+        return [];
+    }
+    return store.listSessionsByCategory(userId, payload.categoryId ?? null, payload.limit ?? 200);
 });
 ipcMain.handle("sessions:getDetail", async (_event, sessionId) => {
-    return store.getSessionDetail(sessionId);
+    const userId = getActiveUserId();
+    if (!userId) {
+        return {
+            session: null,
+            jobs: [],
+            chunks: [],
+            health: null,
+        };
+    }
+    return store.getSessionDetail(userId, sessionId);
 });
 ipcMain.handle("processing:rerun", async (_event, sessionId) => {
-    const session = store.getSessionById(sessionId);
+    const userId = getActiveUserId();
+    if (!userId) {
+        return { ok: false, reason: "auth-required" };
+    }
+    const session = store.getSessionById(userId, sessionId);
     if (!session?.file_path) {
         return { ok: false, reason: "missing-file" };
     }
@@ -236,20 +386,42 @@ ipcMain.handle("processing:rerun", async (_event, sessionId) => {
     return { ok: true };
 });
 ipcMain.handle("settings:get", async () => {
-    return parseSettings(store.getSettings());
+    const userId = getActiveUserId();
+    if (!userId) {
+        return parseSettings({});
+    }
+    return parseSettings(store.getSettings(userId));
 });
 ipcMain.handle("settings:update", async (_event, updates) => {
-    const current = parseSettings(store.getSettings());
+    const userId = getActiveUserId();
+    if (!userId) {
+        return { ok: false, reason: "auth-required", settings: parseSettings({}) };
+    }
+    const current = parseSettings(store.getSettings(userId));
     const next = parseSettings({ ...current, ...updates });
-    store.updateSettings(next);
+    store.updateSettings(userId, next);
     return { ok: true, settings: next };
 });
 ipcMain.handle("benchmark:run", async (_event, payload) => {
-    return runBenchmark(payload.questions, payload.limit);
+    const userId = getActiveUserId();
+    if (!userId) {
+        return {
+            questionCount: 0,
+            avgConfidence: 0,
+            lowConfidenceCount: 0,
+            lowCoverageCount: 0,
+            results: [],
+        };
+    }
+    return runBenchmark(userId, payload.questions, payload.limit);
 });
 ipcMain.handle("sessions:assignCategory", async (_event, payload) => {
+    const userId = getActiveUserId();
+    if (!userId) {
+        return { ok: false, reason: "auth-required" };
+    }
     try {
-        store.assignSessionCategory(payload.sessionId, payload.categoryId);
+        store.assignSessionCategory(userId, payload.sessionId, payload.categoryId);
         return { ok: true };
     }
     catch (error) {
@@ -257,15 +429,27 @@ ipcMain.handle("sessions:assignCategory", async (_event, payload) => {
     }
 });
 ipcMain.handle("sessions:delete", async (_event, sessionId) => {
-    store.deleteSession(sessionId);
+    const userId = getActiveUserId();
+    if (!userId) {
+        return { ok: false, reason: "auth-required" };
+    }
+    store.deleteSession(userId, sessionId);
     return { ok: true };
 });
 ipcMain.handle("categories:list", async () => {
-    return store.listCategories();
+    const userId = getActiveUserId();
+    if (!userId) {
+        return [];
+    }
+    return store.listCategories(userId);
 });
 ipcMain.handle("categories:create", async (_event, name) => {
+    const userId = getActiveUserId();
+    if (!userId) {
+        return { ok: false, reason: "auth-required" };
+    }
     try {
-        const row = store.createCategory(name);
+        const row = store.createCategory(userId, name);
         return { ok: true, category: row };
     }
     catch (error) {
@@ -273,16 +457,28 @@ ipcMain.handle("categories:create", async (_event, name) => {
     }
 });
 ipcMain.handle("categories:delete", async (_event, categoryId) => {
-    store.deleteCategory(categoryId);
+    const userId = getActiveUserId();
+    if (!userId) {
+        return { ok: false, reason: "auth-required" };
+    }
+    store.deleteCategory(userId, categoryId);
     return { ok: true };
 });
 ipcMain.handle("search:content", async (_event, payload) => {
-    return store.searchExtractedContent(payload.query, payload.limit ?? 25);
+    const userId = getActiveUserId();
+    if (!userId) {
+        return [];
+    }
+    return store.searchExtractedContent(userId, payload.query, payload.limit ?? 25);
 });
 ipcMain.handle("ask:query", async (_event, payload) => {
-    const primaryRows = store.searchExtractedContent(payload.question, payload.limit ?? 80);
-    const transcriptRows = store.listRecentExtractedRows(220, "transcript");
-    const ocrRows = store.listRecentExtractedRows(220, "ocr");
+    const userId = getActiveUserId();
+    if (!userId) {
+        return buildAskMemoraAnswer(payload.question, []);
+    }
+    const primaryRows = store.searchExtractedContent(userId, payload.question, payload.limit ?? 80);
+    const transcriptRows = store.listRecentExtractedRows(userId, 220, "transcript");
+    const ocrRows = store.listRecentExtractedRows(userId, 220, "ocr");
     const mergedMap = new Map();
     for (const row of [...primaryRows, ...transcriptRows, ...ocrRows]) {
         if (!mergedMap.has(row.chunk_id)) {
@@ -293,12 +489,20 @@ ipcMain.handle("ask:query", async (_event, payload) => {
     return buildAskMemoraAnswer(payload.question, merged);
 });
 ipcMain.handle("sessions:generateSummary", async (_event, sessionId) => {
-    const detail = store.getSessionDetail(sessionId);
+    const userId = getActiveUserId();
+    if (!userId) {
+        return buildSessionSummary([]);
+    }
+    const detail = store.getSessionDetail(userId, sessionId);
     const summary = buildSessionSummary(detail.chunks);
     return summary;
 });
 ipcMain.handle("sessions:getReplaySource", async (_event, sessionId) => {
-    const sessionRow = store.getSessionById(sessionId);
+    const userId = getActiveUserId();
+    if (!userId) {
+        return { ok: false, reason: "auth-required" };
+    }
+    const sessionRow = store.getSessionById(userId, sessionId);
     if (!sessionRow?.file_path) {
         return { ok: false, reason: "missing-file" };
     }
@@ -314,6 +518,10 @@ ipcMain.handle("sessions:getReplaySource", async (_event, sessionId) => {
     };
 });
 ipcMain.handle("ui:listDisplaySources", async () => {
+    const userId = getActiveUserId();
+    if (!userId) {
+        return [];
+    }
     const sources = await getAvailableDisplaySources();
     return sources.map((source) => ({
         id: source.id,
@@ -322,6 +530,10 @@ ipcMain.handle("ui:listDisplaySources", async () => {
     }));
 });
 ipcMain.handle("ui:setPreferredDisplaySource", async (_event, sourceId) => {
+    const userId = getActiveUserId();
+    if (!userId) {
+        return { ok: false };
+    }
     preferredDisplaySourceId = sourceId;
     return { ok: true };
 });

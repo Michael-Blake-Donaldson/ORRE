@@ -64,7 +64,7 @@ const benchmarkOutput = document.getElementById("benchmarkOutput");
 const saveSettingsBtn = document.getElementById("saveSettingsBtn");
 const resetSettingsBtn = document.getElementById("resetSettingsBtn");
 const settingsStatus = document.getElementById("settingsStatus");
-const navButtons = Array.from(document.querySelectorAll(".nav-item[data-target], .nav-item[data-page]"));
+const navButtons = Array.from(document.querySelectorAll(".nav-item[data-target], .nav-item[data-page], .nav-item[data-action]"));
 const diagBridgeLoaded = document.getElementById("diagBridgeLoaded");
 const diagSourceCount = document.getElementById("diagSourceCount");
 const diagSelectedSource = document.getElementById("diagSelectedSource");
@@ -103,6 +103,18 @@ function persistDiagnosticsState() {
 function setupNavigation() {
   navButtons.forEach((button) => {
     button.addEventListener("click", () => {
+      const action = button.getAttribute("data-action");
+      if (action === "logout") {
+        const api = getMemoraApi();
+        if (api) {
+          api.logoutUser().catch(() => {
+            // Keep navigation responsive even if logout IPC fails.
+          });
+        }
+        window.location.href = "./auth.html";
+        return;
+      }
+
       const pageTarget = button.getAttribute("data-page");
       if (pageTarget) {
         const pageMap = {
@@ -130,6 +142,21 @@ function setupNavigation() {
       }
     });
   });
+}
+
+async function ensureAuthenticated() {
+  const api = getMemoraApi();
+  if (!api) {
+    return false;
+  }
+
+  const user = await api.getCurrentUser();
+  if (!user) {
+    window.location.href = "./auth.html";
+    return false;
+  }
+
+  return true;
 }
 
 function setupBackToTop() {
@@ -609,73 +636,89 @@ function startRecordingTimer() {
   stopRecordingTimer();
   recordingStartedMs = Date.now();
 
-  const tick = () => {
-    if (!recordingTimer || !recordingStartedMs) {
-      return;
-    }
-    recordingTimer.textContent = formatElapsed(Date.now() - recordingStartedMs);
-  };
-
-  tick();
-  recordingTimerInterval = setInterval(tick, 1000);
-}
-
-function stopDetailPolling() {
-  if (detailPollInterval) {
-    clearInterval(detailPollInterval);
-    detailPollInterval = null;
-  }
-}
-
-function startDetailPolling() {
-  stopDetailPolling();
-
-  // Poll only for active jobs to avoid unnecessary IPC chatter.
-  detailPollInterval = setInterval(() => {
-    void refreshSelectedSessionDetail();
-  }, 1500);
-}
-
-function createStatusChip(status) {
-  const className = `chip chip--${status}`;
-  return `<span class="${className}">${status}</span>`;
-}
-
-function formatJobDuration(startedAt, finishedAt) {
-  if (!startedAt || !finishedAt) {
-    return null;
+  if (searchResults) {
+    searchResults.innerHTML = "<li>Type a query to search OCR and transcript memory.</li>";
   }
 
-  const durationMs = new Date(finishedAt).getTime() - new Date(startedAt).getTime();
-  if (!Number.isFinite(durationMs) || durationMs < 0) {
-    return null;
+  if (askCitations) {
+    askCitations.innerHTML = "<li>No citations available for this answer.</li>";
   }
 
-  const seconds = Math.round(durationMs / 100) / 10;
-  return `${seconds.toFixed(seconds >= 10 ? 0 : 1)}s`;
-}
-
-function renderSessionHealth(detail) {
-  if (!sessionHealth) {
-    return;
+  if (saveSettingsBtn) {
+    saveSettingsBtn.addEventListener("click", async () => {
+      await saveSettings();
+    });
   }
 
-  if (!detail.session || !detail.health) {
-    sessionHealth.innerHTML =
-      '<div class="health-shell__empty">Select a session to inspect coverage, job health, and failures.</div>';
-    return;
+  if (resetSettingsBtn) {
+    resetSettingsBtn.addEventListener("click", async () => {
+      await resetSettingsToDefaults();
+    });
   }
 
-  const health = detail.health;
-  const audioState = health.has_audio_evidence ? "Detected" : "Missing";
-  const visualState = health.has_visual_evidence ? "Detected" : "Missing";
-  const latestError = health.latest_error
-    ? `<div class="health-callout health-callout--error"><div class="health-callout__label">Latest failure</div><div>${health.latest_error}</div></div>`
-    : '<div class="health-callout"><div class="health-callout__label">Latest failure</div><div>None</div></div>';
+  if (runBenchmarkBtn) {
 
   sessionHealth.innerHTML = `
     <div class="health-status-row">
       <div class="health-status health-status--${health.status}">
+
+  setupNavigation();
+  setupBackToTop();
+
+  ensureAuthenticated()
+    .then((authenticated) => {
+      if (!authenticated) {
+        return;
+      }
+
+      refreshState().catch((error) => {
+        statusText.textContent = "Failed to load recording state.";
+        console.error(error);
+      });
+
+      refreshSessions().catch((error) => {
+        if (recentSessions) {
+          recentSessions.innerHTML = "<li>Could not load sessions.</li>";
+        }
+        console.error(error);
+      });
+
+      refreshPermissionUI();
+      refreshDiagnosticsUI();
+      setActiveChunkFilter("all");
+      setActiveTranscriptSourceFilter("all");
+
+      loadSettings().catch((error) => {
+        setSettingsStatus("Could not load settings.");
+        console.error(error);
+      });
+
+      renderCategorySelectOptions(null);
+      setCategoryStatus("Create categories and assign them to organize recordings.");
+      if (assignCategoryBtn) {
+        assignCategoryBtn.disabled = true;
+      }
+      if (deleteSessionBtn) {
+        deleteSessionBtn.disabled = true;
+      }
+
+      refreshCategories().catch((error) => {
+        setCategoryStatus("Could not load categories.");
+        console.error(error);
+      });
+
+      refreshDisplaySources().catch((error) => {
+        statusText.textContent = "Could not load capture sources.";
+        diagnostics.lastCaptureError = error?.name ?? "source-list-failed";
+        refreshDiagnosticsUI();
+        persistDiagnosticsState();
+        console.error(error);
+      });
+    })
+    .catch((error) => {
+      statusText.textContent = "Could not verify account session.";
+      console.error(error);
+    });
         <div class="health-status__eyebrow">Overall</div>
         <div class="health-status__title">${health.status_label}</div>
         <div class="health-status__text">${health.summary}</div>

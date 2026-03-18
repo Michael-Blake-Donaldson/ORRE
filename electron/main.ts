@@ -517,7 +517,13 @@ ipcMain.handle("settings:update", async (_event, updates: Partial<AppSettings>) 
 ipcMain.handle("benchmark:run", async (_event, payload: { questions: string[]; limit: number }) => {
   const userId = getActiveUserId();
   if (!userId) {
-    return runBenchmark("", [], payload.limit);
+    return {
+      questionCount: 0,
+      avgConfidence: 0,
+      lowConfidenceCount: 0,
+      lowCoverageCount: 0,
+      results: [],
+    };
   }
 
   return runBenchmark(userId, payload.questions, payload.limit);
