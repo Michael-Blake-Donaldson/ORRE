@@ -21,6 +21,22 @@ npm install
 npm run dev
 ```
 
+## Optional: Supabase Auth (Cross-Device Login)
+
+Memora supports Supabase email/password auth when configured. If Supabase is not configured, the app falls back to local-only account auth.
+
+1. Copy `.env.example` to `.env`
+1. Set your Supabase values:
+
+```bash
+SUPABASE_URL=https://your-project-id.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+# or
+SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+```
+
+1. Restart the app (`npm run dev`)
+
 Note: The first transcript run downloads the Whisper tiny model to local cache, which can take a minute depending on network speed.
 
 ## Build

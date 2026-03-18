@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { app, BrowserWindow, desktopCapturer, ipcMain, session } from "electron";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
@@ -8,6 +9,7 @@ import { createDb } from "./db.js";
 import { ProcessingQueue } from "./processing.js";
 import { buildAskMemoraAnswer } from "./qa.js";
 import { buildSessionSummary } from "./summary.js";
+import { isSupabaseAuthConfigured, loginWithSupabase, logoutFromSupabase, registerWithSupabase } from "./supabase.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 let mainWindow = null;
@@ -16,6 +18,7 @@ let recordingStartedAt = null;
 let activeSessionId = null;
 let preferredDisplaySourceId = null;
 let activeUserId = null;
+let activeAuthUser = null;
 const store = createDb(app.getPath("userData"));
 const processingQueue = new ProcessingQueue(store);
 const DEFAULT_SETTINGS = {
@@ -190,8 +193,15 @@ ipcMain.handle("recording:getState", async () => {
     };
 });
 ipcMain.handle("auth:getCurrentUser", async () => {
+    if (activeAuthUser) {
+        return activeAuthUser;
+    }
     const userId = getActiveUserId();
     if (!userId) {
+        return null;
+    }
+    if (isSupabaseAuthConfigured()) {
+        activeUserId = null;
         return null;
     }
     const user = store.getUserById(userId);
@@ -199,7 +209,9 @@ ipcMain.handle("auth:getCurrentUser", async () => {
         activeUserId = null;
         return null;
     }
-    return toAuthUser(user);
+    const authUser = toAuthUser(user);
+    activeAuthUser = authUser;
+    return authUser;
 });
 ipcMain.handle("auth:register", async (_event, payload) => {
     const email = normalizeEmail(payload.email ?? "");
@@ -213,6 +225,21 @@ ipcMain.handle("auth:register", async (_event, payload) => {
     }
     if (!displayName || displayName.length < 2) {
         return { ok: false, reason: "Display name must be at least 2 characters." };
+    }
+    if (isSupabaseAuthConfigured()) {
+        const cloud = await registerWithSupabase(email, password, displayName);
+        if (!cloud.ok) {
+            return { ok: false, reason: cloud.reason };
+        }
+        activeUserId = cloud.user.id;
+        activeAuthUser = cloud.user;
+        recordingMode = "idle";
+        recordingStartedAt = null;
+        activeSessionId = null;
+        return {
+            ok: true,
+            user: cloud.user,
+        };
     }
     if (store.getUserByEmail(email)) {
         return { ok: false, reason: "An account with this email already exists." };
@@ -229,6 +256,11 @@ ipcMain.handle("auth:register", async (_event, payload) => {
         createdAt,
     });
     activeUserId = userId;
+    activeAuthUser = {
+        id: userId,
+        email,
+        displayName,
+    };
     recordingMode = "idle";
     recordingStartedAt = null;
     activeSessionId = null;
@@ -244,6 +276,21 @@ ipcMain.handle("auth:register", async (_event, payload) => {
 ipcMain.handle("auth:login", async (_event, payload) => {
     const email = normalizeEmail(payload.email ?? "");
     const password = String(payload.password ?? "");
+    if (isSupabaseAuthConfigured()) {
+        const cloud = await loginWithSupabase(email, password);
+        if (!cloud.ok) {
+            return { ok: false, reason: cloud.reason || "Invalid email or password." };
+        }
+        activeUserId = cloud.user.id;
+        activeAuthUser = cloud.user;
+        recordingMode = "idle";
+        recordingStartedAt = null;
+        activeSessionId = null;
+        return {
+            ok: true,
+            user: cloud.user,
+        };
+    }
     const user = store.getUserByEmail(email);
     if (!user) {
         return { ok: false, reason: "Invalid email or password." };
@@ -253,6 +300,7 @@ ipcMain.handle("auth:login", async (_event, payload) => {
         return { ok: false, reason: "Invalid email or password." };
     }
     activeUserId = user.id;
+    activeAuthUser = toAuthUser(user);
     recordingMode = "idle";
     recordingStartedAt = null;
     activeSessionId = null;
@@ -263,7 +311,16 @@ ipcMain.handle("auth:login", async (_event, payload) => {
     };
 });
 ipcMain.handle("auth:logout", async () => {
+    if (isSupabaseAuthConfigured()) {
+        try {
+            await logoutFromSupabase();
+        }
+        catch {
+            // Best-effort sign-out; local session will still clear.
+        }
+    }
     activeUserId = null;
+    activeAuthUser = null;
     recordingMode = "idle";
     recordingStartedAt = null;
     activeSessionId = null;
