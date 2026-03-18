@@ -1066,7 +1066,7 @@ ul {
   min-height: 660px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 18px;
-  background: linear-gradient(155deg, rgba(30, 26, 45, 0.92), rgba(24, 22, 35, 0.95));
+  background: linear-gradient(155deg, rgba(10, 22, 46, 0.92), rgba(8, 18, 36, 0.95));
   box-shadow: 0 40px 90px rgba(0, 0, 0, 0.5);
   overflow: hidden;
 }
@@ -1093,7 +1093,7 @@ ul {
 .auth-visual {
   position: relative;
   padding: 18px;
-  background: linear-gradient(170deg, rgba(118, 86, 255, 0.24), rgba(26, 22, 44, 0.28));
+  background: linear-gradient(170deg, rgba(0, 194, 255, 0.2), rgba(10, 24, 50, 0.32));
   border-right: 1px solid rgba(255, 255, 255, 0.08);
   display: grid;
   align-content: space-between;
@@ -1104,17 +1104,26 @@ ul {
   grid-template-columns: 1fr auto;
   align-items: center;
   gap: 10px;
-  color: #d7d8ec;
+  color: #d7ebff;
   font-size: 13px;
   letter-spacing: 0.03em;
   z-index: 2;
+}
+
+.auth-visual__brand {
+  margin: 0;
+  padding: 0;
+}
+
+.auth-visual__brand .brand {
+  font-size: 30px;
 }
 
 .auth-visual__pill {
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 999px;
   padding: 7px 12px;
-  color: #e8e6ff;
+  color: #e7f6ff;
   background: rgba(255, 255, 255, 0.08);
   font-size: 12px;
   font-weight: 600;
@@ -1127,9 +1136,9 @@ ul {
   border: 1px solid rgba(255, 255, 255, 0.12);
   min-height: 510px;
   background:
-    radial-gradient(120% 60% at 10% 0%, rgba(143, 116, 255, 0.55), transparent 55%),
-    radial-gradient(90% 80% at 85% 20%, rgba(82, 64, 174, 0.55), transparent 60%),
-    linear-gradient(180deg, rgba(90, 78, 170, 0.85), rgba(22, 18, 40, 0.95));
+    radial-gradient(120% 60% at 10% 0%, rgba(60, 142, 255, 0.5), transparent 55%),
+    radial-gradient(90% 80% at 85% 20%, rgba(24, 79, 155, 0.5), transparent 60%),
+    linear-gradient(180deg, rgba(40, 89, 160, 0.8), rgba(8, 24, 50, 0.95));
   overflow: hidden;
 }
 
@@ -1138,9 +1147,9 @@ ul {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(120% 66% at 36% 88%, rgba(10, 7, 18, 0.96), rgba(18, 15, 34, 0.12) 60%),
-    radial-gradient(90% 45% at 60% 98%, rgba(8, 7, 14, 0.98), transparent 68%),
-    radial-gradient(72% 24% at 70% 64%, rgba(55, 48, 106, 0.42), transparent 70%);
+    radial-gradient(120% 66% at 36% 88%, rgba(2, 10, 24, 0.96), rgba(12, 26, 50, 0.14) 60%),
+    radial-gradient(90% 45% at 60% 98%, rgba(3, 8, 20, 0.98), transparent 68%),
+    radial-gradient(72% 24% at 70% 64%, rgba(22, 58, 108, 0.4), transparent 70%);
 }
 
 .auth-visual__image::after {
@@ -1148,7 +1157,7 @@ ul {
   position: absolute;
   inset: auto 0 0 0;
   height: 210px;
-  background: linear-gradient(180deg, transparent, rgba(12, 9, 22, 0.94));
+  background: linear-gradient(180deg, transparent, rgba(3, 10, 24, 0.94));
 }
 
 .auth-visual__caption {
@@ -1240,7 +1249,7 @@ ul {
 .auth-link-btn {
   border: none;
   background: transparent;
-  color: #dbd4ff;
+  color: #8fdaff;
   text-decoration: underline;
   text-underline-offset: 2px;
   cursor: pointer;
@@ -1250,16 +1259,6 @@ ul {
 
 .auth-link-btn:hover {
   color: #ffffff;
-}
-
-.auth-tabs {
-  display: inline-flex;
-  width: fit-content;
-  gap: 8px;
-  padding: 4px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.03);
 }
 
 .auth-form {
@@ -1296,20 +1295,20 @@ ul {
 .auth-checkbox input {
   width: 15px;
   height: 15px;
-  accent-color: #7f63f1;
+  accent-color: #33beff;
 }
 
 .auth-submit {
   margin-top: 4px;
   width: 100%;
-  background: linear-gradient(135deg, #6f55d7, #7d62de);
-  border-color: rgba(159, 136, 255, 0.6);
+  background: linear-gradient(135deg, #2da9ff, #2f81ff);
+  border-color: rgba(86, 194, 255, 0.68);
   color: #faf8ff;
 }
 
 .auth-submit:hover {
-  border-color: rgba(196, 179, 255, 0.75);
-  box-shadow: 0 0 0 1px rgba(173, 151, 255, 0.22), 0 0 20px rgba(124, 96, 226, 0.42);
+  border-color: rgba(144, 228, 255, 0.8);
+  box-shadow: 0 0 0 1px rgba(116, 212, 255, 0.22), 0 0 20px rgba(45, 169, 255, 0.45);
 }
 
 .auth-form--hidden {
@@ -1355,7 +1354,6 @@ ul {
 .auth-status {
   margin-top: 2px;
   min-height: 22px;
-}
 }
 
 @media (max-width: 980px) {
@@ -1415,12 +1413,6 @@ ul {
 
   .auth-pane {
     padding: 24px 20px 20px;
-  }
-
-  .auth-pane__logo {
-    position: static;
-    justify-self: end;
-    margin-bottom: 2px;
   }
 
   .auth-title {

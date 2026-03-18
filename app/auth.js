@@ -1,7 +1,5 @@
 const loginForm = document.getElementById("loginForm");
 const registerForm = document.getElementById("registerForm");
-const showLoginBtn = document.getElementById("showLoginBtn");
-const showRegisterBtn = document.getElementById("showRegisterBtn");
 const switchInlineBtn = document.getElementById("switchInlineBtn");
 const authTitle = document.getElementById("authTitle");
 const authSwitchPrompt = document.getElementById("authSwitchPrompt");
@@ -37,9 +35,6 @@ function setMode(mode) {
 
   loginForm?.classList.toggle("auth-form--hidden", !isLogin);
   registerForm?.classList.toggle("auth-form--hidden", isLogin);
-
-  showLoginBtn?.classList.toggle("button--primary", isLogin);
-  showRegisterBtn?.classList.toggle("button--primary", !isLogin);
 
   if (authTitle) {
     authTitle.textContent = isLogin ? "Welcome back" : "Create an account";
@@ -129,23 +124,13 @@ registerForm?.addEventListener("submit", async (event) => {
   window.location.href = "./index.html";
 });
 
-showLoginBtn?.addEventListener("click", () => {
-  setMode("login");
-  setStatus("Login with your account.");
-});
-
-showRegisterBtn?.addEventListener("click", () => {
-  setMode("register");
-  setStatus("Create your account to keep your data private.");
-});
-
 switchInlineBtn?.addEventListener("click", () => {
   const nextMode = loginForm?.classList.contains("auth-form--hidden") ? "login" : "register";
   setMode(nextMode);
   setStatus(nextMode === "login" ? "Login with your account." : "Create your account to keep your data private.");
 });
 
-setMode("register");
+setMode("login");
 checkExistingSession().catch((error) => {
   setStatus("Could not check session.");
   console.error(error);

@@ -12,7 +12,10 @@
       <section class="auth-card auth-card--split">
         <aside class="auth-visual">
           <div class="auth-visual__chrome">
-            <span>Memora Experience</span>
+            <div class="brand-lockup auth-visual__brand">
+              <img class="brand-logo" src="./assets/memora-logo.png" alt="Memora logo" />
+              <div class="brand">Memora</div>
+            </div>
             <button class="auth-visual__pill" type="button" disabled>Desktop Native</button>
           </div>
           <div class="auth-visual__image" role="img" aria-label="Decorative visual placeholder"></div>
@@ -25,11 +28,6 @@
         </aside>
 
         <section class="auth-pane">
-          <div class="auth-pane__logo brand-lockup">
-            <img class="brand-logo" src="./assets/memora-logo.png" alt="Memora logo" />
-            <div class="brand">Memora</div>
-          </div>
-
           <h1 id="authTitle" class="auth-title">Create an account</h1>
           <p class="auth-copy">Your sessions, categories, and settings stay private to your account.</p>
 
@@ -37,11 +35,6 @@
             <span id="authSwitchPrompt">Already have an account?</span>
             <button id="switchInlineBtn" class="auth-link-btn" type="button">Log in</button>
           </p>
-
-          <div class="auth-tabs" role="tablist" aria-label="Authentication mode">
-            <button id="showRegisterBtn" class="button button--mini button--primary" type="button">Register</button>
-            <button id="showLoginBtn" class="button button--mini" type="button">Login</button>
-          </div>
 
           <form id="registerForm" class="auth-form">
             <div class="auth-name-row">
