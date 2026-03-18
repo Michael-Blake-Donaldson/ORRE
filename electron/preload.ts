@@ -92,7 +92,31 @@ type AppSettings = {
   benchmarkLimit: number;
 };
 
+type AuthUser = {
+  id: string;
+  email: string;
+  displayName: string;
+};
+
 const api = {
+  getCurrentUser: async () => {
+    return ipcRenderer.invoke("auth:getCurrentUser") as Promise<AuthUser | null>;
+  },
+  registerUser: async (payload: { email: string; password: string; displayName: string }) => {
+    return ipcRenderer.invoke("auth:register", payload) as Promise<
+      | { ok: true; user: AuthUser }
+      | { ok: false; reason: string }
+    >;
+  },
+  loginUser: async (payload: { email: string; password: string }) => {
+    return ipcRenderer.invoke("auth:login", payload) as Promise<
+      | { ok: true; user: AuthUser }
+      | { ok: false; reason: string }
+    >;
+  },
+  logoutUser: async () => {
+    return ipcRenderer.invoke("auth:logout") as Promise<{ ok: true }>;
+  },
   getRecordingState: async () => {
     return ipcRenderer.invoke("recording:getState") as Promise<{
       mode: RecordingMode;

@@ -2,6 +2,7 @@ import { app, BrowserWindow, desktopCapturer, ipcMain, session } from "electron"
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 import { promises as fs } from "node:fs";
+import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { dialog } from "electron";
 import { createDb, type MemoraStore, type SessionRow } from "./db.js";
 import { ProcessingQueue } from "./processing.js";
@@ -18,8 +19,15 @@ let recordingMode: RecordingMode = "idle";
 let recordingStartedAt: string | null = null;
 let activeSessionId: string | null = null;
 let preferredDisplaySourceId: string | null = null;
+let activeUserId: string | null = null;
 const store = createDb(app.getPath("userData")) as MemoraStore;
 const processingQueue = new ProcessingQueue(store);
+
+type AuthUser = {
+  id: string;
+  email: string;
+  displayName: string;
+};
 
 type AppSettings = {
   defaultMode: "session" | "clip" | "always-on";
@@ -40,6 +48,43 @@ const DEFAULT_SETTINGS: AppSettings = {
   ].join("\n"),
   benchmarkLimit: 80,
 };
+
+function normalizeEmail(input: string) {
+  return input.trim().toLowerCase();
+}
+
+function toAuthUser(row: { id: string; email: string; display_name: string }): AuthUser {
+  return {
+    id: row.id,
+    email: row.email,
+    displayName: row.display_name,
+  };
+}
+
+function hashPassword(password: string, saltHex?: string) {
+  const salt = saltHex ? Buffer.from(saltHex, "hex") : randomBytes(16);
+  const hash = scryptSync(password, salt, 64);
+  return {
+    hashHex: hash.toString("hex"),
+    saltHex: salt.toString("hex"),
+  };
+}
+
+function verifyPassword(password: string, expectedHashHex: string, saltHex: string) {
+  const next = hashPassword(password, saltHex);
+  const left = Buffer.from(next.hashHex, "hex");
+  const right = Buffer.from(expectedHashHex, "hex");
+
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return timingSafeEqual(left, right);
+}
+
+function getActiveUserId() {
+  return activeUserId;
+}
 
 function parseSettings(raw: Record<string, unknown>): AppSettings {
   const merged: AppSettings = {
@@ -67,13 +112,13 @@ function parseSettings(raw: Record<string, unknown>): AppSettings {
   return merged;
 }
 
-function runBenchmark(questionList: string[], limit: number) {
+function runBenchmark(userId: string, questionList: string[], limit: number) {
   const questions = questionList.map((q) => q.trim()).filter((q) => q.length >= 4);
 
   const results = questions.map((question) => {
-    const primaryRows = store.searchExtractedContent(question, limit);
-    const transcriptRows = store.listRecentExtractedRows(limit * 2, "transcript");
-    const ocrRows = store.listRecentExtractedRows(limit * 2, "ocr");
+    const primaryRows = store.searchExtractedContent(userId, question, limit);
+    const transcriptRows = store.listRecentExtractedRows(userId, limit * 2, "transcript");
+    const ocrRows = store.listRecentExtractedRows(userId, limit * 2, "ocr");
 
     const mergedMap = new Map<string, (typeof primaryRows)[number]>();
     for (const row of [...primaryRows, ...transcriptRows, ...ocrRows]) {
@@ -146,7 +191,7 @@ function createWindow() {
     },
   });
 
-  mainWindow.loadFile(path.resolve(__dirname, "../app/index.html"));
+  mainWindow.loadFile(path.resolve(__dirname, "../app/auth.html"));
 
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -197,19 +242,125 @@ app.on("window-all-closed", () => {
 });
 
 ipcMain.handle("recording:getState", async () => {
+  const userId = getActiveUserId();
   return {
     mode: recordingMode,
-    isRecording: recordingMode !== "idle",
+    isRecording: recordingMode !== "idle" && Boolean(userId),
   };
 });
 
+ipcMain.handle("auth:getCurrentUser", async () => {
+  const userId = getActiveUserId();
+  if (!userId) {
+    return null;
+  }
+
+  const user = store.getUserById(userId);
+  if (!user) {
+    activeUserId = null;
+    return null;
+  }
+
+  return toAuthUser(user);
+});
+
+ipcMain.handle("auth:register", async (_event, payload: { email: string; password: string; displayName: string }) => {
+  const email = normalizeEmail(payload.email ?? "");
+  const password = String(payload.password ?? "");
+  const displayName = String(payload.displayName ?? "").trim();
+
+  if (!email || !email.includes("@")) {
+    return { ok: false, reason: "Enter a valid email address." };
+  }
+
+  if (password.length < 8) {
+    return { ok: false, reason: "Password must be at least 8 characters." };
+  }
+
+  if (!displayName || displayName.length < 2) {
+    return { ok: false, reason: "Display name must be at least 2 characters." };
+  }
+
+  if (store.getUserByEmail(email)) {
+    return { ok: false, reason: "An account with this email already exists." };
+  }
+
+  const createdAt = new Date().toISOString();
+  const userId = crypto.randomUUID();
+  const passwordData = hashPassword(password);
+
+  store.createUser({
+    id: userId,
+    email,
+    displayName,
+    passwordHash: passwordData.hashHex,
+    passwordSalt: passwordData.saltHex,
+    createdAt,
+  });
+
+  activeUserId = userId;
+  recordingMode = "idle";
+  recordingStartedAt = null;
+  activeSessionId = null;
+
+  return {
+    ok: true,
+    user: {
+      id: userId,
+      email,
+      displayName,
+    },
+  };
+});
+
+ipcMain.handle("auth:login", async (_event, payload: { email: string; password: string }) => {
+  const email = normalizeEmail(payload.email ?? "");
+  const password = String(payload.password ?? "");
+
+  const user = store.getUserByEmail(email);
+  if (!user) {
+    return { ok: false, reason: "Invalid email or password." };
+  }
+
+  const verified = verifyPassword(password, user.password_hash, user.password_salt);
+  if (!verified) {
+    return { ok: false, reason: "Invalid email or password." };
+  }
+
+  activeUserId = user.id;
+  recordingMode = "idle";
+  recordingStartedAt = null;
+  activeSessionId = null;
+  store.setUserLastLoginAt(user.id, new Date().toISOString());
+
+  return {
+    ok: true,
+    user: toAuthUser(user),
+  };
+});
+
+ipcMain.handle("auth:logout", async () => {
+  activeUserId = null;
+  recordingMode = "idle";
+  recordingStartedAt = null;
+  activeSessionId = null;
+  preferredDisplaySourceId = null;
+  return { ok: true };
+});
+
 ipcMain.handle("recording:start", async (_event, mode: RecordingMode) => {
+  const userId = getActiveUserId();
+  if (!userId) {
+    return { ok: false, reason: "auth-required" };
+  }
+
   recordingMode = mode;
   recordingStartedAt = new Date().toISOString();
   activeSessionId = crypto.randomUUID();
 
   store.createSession({
     id: activeSessionId,
+    userId,
     mode: mode,
     startedAt: recordingStartedAt,
   });
@@ -223,6 +374,11 @@ ipcMain.handle("recording:start", async (_event, mode: RecordingMode) => {
 });
 
 ipcMain.handle("recording:stop", async () => {
+  const userId = getActiveUserId();
+  if (!userId) {
+    return { ok: false, reason: "auth-required", sessionId: null, stoppedAt: new Date().toISOString(), startedAt: null };
+  }
+
   recordingMode = "idle";
   const stoppedAt = new Date().toISOString();
   const stoppedSessionId = activeSessionId;
@@ -230,6 +386,7 @@ ipcMain.handle("recording:stop", async () => {
   if (stoppedSessionId) {
     store.stopSession({
       id: stoppedSessionId,
+      userId,
       stoppedAt,
     });
   }
@@ -249,6 +406,11 @@ ipcMain.handle("recording:stop", async () => {
 });
 
 ipcMain.handle("recording:save", async (_event, payload: { sessionId: string; bytes: number[]; suggestedName: string }) => {
+  const userId = getActiveUserId();
+  if (!userId) {
+    return { ok: false, reason: "auth-required" };
+  }
+
   if (!mainWindow) {
     return { ok: false, reason: "window-unavailable" };
   }
@@ -267,6 +429,7 @@ ipcMain.handle("recording:save", async (_event, payload: { sessionId: string; by
 
   store.markSessionSaved({
     id: payload.sessionId,
+    userId,
     filePath: result.filePath,
   });
 
@@ -277,21 +440,46 @@ ipcMain.handle("recording:save", async (_event, payload: { sessionId: string; by
 });
 
 ipcMain.handle("sessions:list", async () => {
-  const rows = store.listSessions(20) as SessionRow[];
+  const userId = getActiveUserId();
+  if (!userId) {
+    return [] as SessionRow[];
+  }
+
+  const rows = store.listSessions(userId, 20) as SessionRow[];
 
   return rows;
 });
 
 ipcMain.handle("sessions:listByCategory", async (_event, payload: { categoryId: string | null; limit?: number }) => {
-  return store.listSessionsByCategory(payload.categoryId ?? null, payload.limit ?? 200);
+  const userId = getActiveUserId();
+  if (!userId) {
+    return [] as SessionRow[];
+  }
+
+  return store.listSessionsByCategory(userId, payload.categoryId ?? null, payload.limit ?? 200);
 });
 
 ipcMain.handle("sessions:getDetail", async (_event, sessionId: string) => {
-  return store.getSessionDetail(sessionId);
+  const userId = getActiveUserId();
+  if (!userId) {
+    return {
+      session: null,
+      jobs: [],
+      chunks: [],
+      health: null,
+    };
+  }
+
+  return store.getSessionDetail(userId, sessionId);
 });
 
 ipcMain.handle("processing:rerun", async (_event, sessionId: string) => {
-  const session = store.getSessionById(sessionId);
+  const userId = getActiveUserId();
+  if (!userId) {
+    return { ok: false, reason: "auth-required" };
+  }
+
+  const session = store.getSessionById(userId, sessionId);
 
   if (!session?.file_path) {
     return { ok: false, reason: "missing-file" };
@@ -306,23 +494,43 @@ ipcMain.handle("processing:rerun", async (_event, sessionId: string) => {
 });
 
 ipcMain.handle("settings:get", async () => {
-  return parseSettings(store.getSettings());
+  const userId = getActiveUserId();
+  if (!userId) {
+    return parseSettings({});
+  }
+
+  return parseSettings(store.getSettings(userId));
 });
 
 ipcMain.handle("settings:update", async (_event, updates: Partial<AppSettings>) => {
-  const current = parseSettings(store.getSettings());
+  const userId = getActiveUserId();
+  if (!userId) {
+    return { ok: false, reason: "auth-required", settings: parseSettings({}) };
+  }
+
+  const current = parseSettings(store.getSettings(userId));
   const next = parseSettings({ ...current, ...updates });
-  store.updateSettings(next as Record<string, unknown>);
+  store.updateSettings(userId, next as Record<string, unknown>);
   return { ok: true, settings: next };
 });
 
 ipcMain.handle("benchmark:run", async (_event, payload: { questions: string[]; limit: number }) => {
-  return runBenchmark(payload.questions, payload.limit);
+  const userId = getActiveUserId();
+  if (!userId) {
+    return runBenchmark("", [], payload.limit);
+  }
+
+  return runBenchmark(userId, payload.questions, payload.limit);
 });
 
 ipcMain.handle("sessions:assignCategory", async (_event, payload: { sessionId: string; categoryId: string | null }) => {
+  const userId = getActiveUserId();
+  if (!userId) {
+    return { ok: false, reason: "auth-required" };
+  }
+
   try {
-    store.assignSessionCategory(payload.sessionId, payload.categoryId);
+    store.assignSessionCategory(userId, payload.sessionId, payload.categoryId);
     return { ok: true };
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message : "assign-failed" };
@@ -330,17 +538,32 @@ ipcMain.handle("sessions:assignCategory", async (_event, payload: { sessionId: s
 });
 
 ipcMain.handle("sessions:delete", async (_event, sessionId: string) => {
-  store.deleteSession(sessionId);
+  const userId = getActiveUserId();
+  if (!userId) {
+    return { ok: false, reason: "auth-required" };
+  }
+
+  store.deleteSession(userId, sessionId);
   return { ok: true };
 });
 
 ipcMain.handle("categories:list", async () => {
-  return store.listCategories();
+  const userId = getActiveUserId();
+  if (!userId) {
+    return [];
+  }
+
+  return store.listCategories(userId);
 });
 
 ipcMain.handle("categories:create", async (_event, name: string) => {
+  const userId = getActiveUserId();
+  if (!userId) {
+    return { ok: false, reason: "auth-required" };
+  }
+
   try {
-    const row = store.createCategory(name);
+    const row = store.createCategory(userId, name);
     return { ok: true, category: row };
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message : "create-category-failed" };
@@ -348,18 +571,33 @@ ipcMain.handle("categories:create", async (_event, name: string) => {
 });
 
 ipcMain.handle("categories:delete", async (_event, categoryId: string) => {
-  store.deleteCategory(categoryId);
+  const userId = getActiveUserId();
+  if (!userId) {
+    return { ok: false, reason: "auth-required" };
+  }
+
+  store.deleteCategory(userId, categoryId);
   return { ok: true };
 });
 
 ipcMain.handle("search:content", async (_event, payload: { query: string; limit?: number }) => {
-  return store.searchExtractedContent(payload.query, payload.limit ?? 25);
+  const userId = getActiveUserId();
+  if (!userId) {
+    return [];
+  }
+
+  return store.searchExtractedContent(userId, payload.query, payload.limit ?? 25);
 });
 
 ipcMain.handle("ask:query", async (_event, payload: { question: string; limit?: number }) => {
-  const primaryRows = store.searchExtractedContent(payload.question, payload.limit ?? 80);
-  const transcriptRows = store.listRecentExtractedRows(220, "transcript");
-  const ocrRows = store.listRecentExtractedRows(220, "ocr");
+  const userId = getActiveUserId();
+  if (!userId) {
+    return buildAskMemoraAnswer(payload.question, []);
+  }
+
+  const primaryRows = store.searchExtractedContent(userId, payload.question, payload.limit ?? 80);
+  const transcriptRows = store.listRecentExtractedRows(userId, 220, "transcript");
+  const ocrRows = store.listRecentExtractedRows(userId, 220, "ocr");
 
   const mergedMap = new Map<string, (typeof primaryRows)[number]>();
   for (const row of [...primaryRows, ...transcriptRows, ...ocrRows]) {
@@ -374,13 +612,23 @@ ipcMain.handle("ask:query", async (_event, payload: { question: string; limit?: 
 });
 
 ipcMain.handle("sessions:generateSummary", async (_event, sessionId: string) => {
-  const detail = store.getSessionDetail(sessionId);
+  const userId = getActiveUserId();
+  if (!userId) {
+    return buildSessionSummary([]);
+  }
+
+  const detail = store.getSessionDetail(userId, sessionId);
   const summary = buildSessionSummary(detail.chunks);
   return summary;
 });
 
 ipcMain.handle("sessions:getReplaySource", async (_event, sessionId: string) => {
-  const sessionRow = store.getSessionById(sessionId);
+  const userId = getActiveUserId();
+  if (!userId) {
+    return { ok: false, reason: "auth-required" };
+  }
+
+  const sessionRow = store.getSessionById(userId, sessionId);
 
   if (!sessionRow?.file_path) {
     return { ok: false, reason: "missing-file" };
@@ -399,6 +647,11 @@ ipcMain.handle("sessions:getReplaySource", async (_event, sessionId: string) => 
 });
 
 ipcMain.handle("ui:listDisplaySources", async () => {
+  const userId = getActiveUserId();
+  if (!userId) {
+    return [];
+  }
+
   const sources = await getAvailableDisplaySources();
 
   return sources.map((source) => ({
@@ -409,6 +662,11 @@ ipcMain.handle("ui:listDisplaySources", async () => {
 });
 
 ipcMain.handle("ui:setPreferredDisplaySource", async (_event, sourceId: string | null) => {
+  const userId = getActiveUserId();
+  if (!userId) {
+    return { ok: false };
+  }
+
   preferredDisplaySourceId = sourceId;
   return { ok: true };
 });

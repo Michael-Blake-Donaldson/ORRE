@@ -77,6 +77,16 @@ export type SearchResultRow = {
   rank: number;
 };
 
+export type UserRow = {
+  id: string;
+  email: string;
+  display_name: string;
+  password_hash: string;
+  password_salt: string;
+  created_at: string;
+  last_login_at: string | null;
+};
+
 // MemoraStore centralizes DB access and prepared statements for speed and maintainability.
 export class MemoraStore {
   private readonly db: Database.Database;
@@ -92,20 +102,34 @@ export class MemoraStore {
 
   private initializeSchema() {
     this.db.exec(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        email TEXT NOT NULL UNIQUE,
+        display_name TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        password_salt TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        last_login_at TEXT
+      );
+
       CREATE TABLE IF NOT EXISTS sessions (
         id TEXT PRIMARY KEY,
+        user_id TEXT,
         mode TEXT NOT NULL,
         started_at TEXT NOT NULL,
         stopped_at TEXT,
         file_path TEXT,
         status TEXT NOT NULL,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       );
 
       CREATE TABLE IF NOT EXISTS categories (
         id TEXT PRIMARY KEY,
+        user_id TEXT,
         name TEXT NOT NULL UNIQUE,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       );
 
       CREATE INDEX IF NOT EXISTS idx_categories_name ON categories(name);
@@ -143,13 +167,16 @@ export class MemoraStore {
       CREATE INDEX IF NOT EXISTS idx_chunks_type ON extracted_chunks(chunk_type);
 
       CREATE TABLE IF NOT EXISTS app_settings (
+        user_id TEXT,
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL,
-        updated_at TEXT NOT NULL
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       );
     `);
 
     this.ensureSessionCategoryColumn();
+    this.ensureUserScopedColumns();
 
     this.ftsEnabled = this.initializeFtsSafely();
 
@@ -187,14 +214,74 @@ export class MemoraStore {
     this.db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_category_id ON sessions(category_id);`);
   }
 
-  createSession(input: { id: string; mode: string; startedAt: string }) {
+  private ensureUserScopedColumns() {
+    try {
+      this.db.exec(`ALTER TABLE sessions ADD COLUMN user_id TEXT;`);
+    } catch {
+      // Column already exists.
+    }
+
+    try {
+      this.db.exec(`ALTER TABLE categories ADD COLUMN user_id TEXT;`);
+    } catch {
+      // Column already exists.
+    }
+
+    try {
+      this.db.exec(`ALTER TABLE app_settings ADD COLUMN user_id TEXT;`);
+    } catch {
+      // Column already exists.
+    }
+
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);`);
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_categories_user_id ON categories(user_id);`);
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_app_settings_user_key ON app_settings(user_id, key);`);
+  }
+
+  createUser(input: {
+    id: string;
+    email: string;
+    displayName: string;
+    passwordHash: string;
+    passwordSalt: string;
+    createdAt: string;
+  }) {
     this.db
       .prepare(
-        `INSERT INTO sessions (id, mode, started_at, status, created_at)
-         VALUES (@id, @mode, @started_at, @status, @created_at)`,
+        `INSERT INTO users (id, email, display_name, password_hash, password_salt, created_at, last_login_at)
+         VALUES (@id, @email, @display_name, @password_hash, @password_salt, @created_at, NULL)`,
       )
       .run({
         id: input.id,
+        email: input.email,
+        display_name: input.displayName,
+        password_hash: input.passwordHash,
+        password_salt: input.passwordSalt,
+        created_at: input.createdAt,
+      });
+  }
+
+  getUserByEmail(email: string): UserRow | null {
+    return (this.db.prepare(`SELECT * FROM users WHERE email = ?`).get(email) as UserRow | undefined) ?? null;
+  }
+
+  getUserById(userId: string): UserRow | null {
+    return (this.db.prepare(`SELECT * FROM users WHERE id = ?`).get(userId) as UserRow | undefined) ?? null;
+  }
+
+  setUserLastLoginAt(userId: string, timestamp: string) {
+    this.db.prepare(`UPDATE users SET last_login_at = ? WHERE id = ?`).run(timestamp, userId);
+  }
+
+  createSession(input: { id: string; userId: string; mode: string; startedAt: string }) {
+    this.db
+      .prepare(
+        `INSERT INTO sessions (id, user_id, mode, started_at, status, created_at)
+         VALUES (@id, @user_id, @mode, @started_at, @status, @created_at)`,
+      )
+      .run({
+        id: input.id,
+        user_id: input.userId,
         mode: input.mode,
         started_at: input.startedAt,
         status: "recording",
@@ -202,78 +289,82 @@ export class MemoraStore {
       });
   }
 
-  stopSession(input: { id: string; stoppedAt: string }) {
+  stopSession(input: { id: string; userId: string; stoppedAt: string }) {
     this.db
       .prepare(
         `UPDATE sessions
          SET stopped_at = @stopped_at, status = @status
-         WHERE id = @id`,
+         WHERE id = @id AND user_id = @user_id`,
       )
       .run({
         id: input.id,
+        user_id: input.userId,
         stopped_at: input.stoppedAt,
         status: "stopped",
       });
   }
 
-  markSessionSaved(input: { id: string; filePath: string }) {
+  markSessionSaved(input: { id: string; userId: string; filePath: string }) {
     this.db
       .prepare(
         `UPDATE sessions
          SET file_path = @file_path, status = @status
-         WHERE id = @id`,
+         WHERE id = @id AND user_id = @user_id`,
       )
       .run({
         id: input.id,
+        user_id: input.userId,
         file_path: input.filePath,
         status: "saved",
       });
   }
 
-  listSessions(limit = 20): SessionRow[] {
+  listSessions(userId: string, limit = 20): SessionRow[] {
     return this.db
       .prepare(
         `SELECT s.id, s.mode, s.started_at, s.stopped_at, s.file_path, s.status, s.category_id, c.name AS category_name, s.created_at
          FROM sessions s
          LEFT JOIN categories c ON c.id = s.category_id
+         WHERE s.user_id = ?
          ORDER BY started_at DESC
          LIMIT ?`,
       )
-      .all(limit) as SessionRow[];
+        .all(userId, limit) as SessionRow[];
   }
 
-  getSessionById(id: string): SessionRow | null {
+      getSessionById(userId: string, id: string): SessionRow | null {
     return (
       (this.db
         .prepare(
           `SELECT s.id, s.mode, s.started_at, s.stopped_at, s.file_path, s.status, s.category_id, c.name AS category_name, s.created_at
            FROM sessions s
            LEFT JOIN categories c ON c.id = s.category_id
-           WHERE s.id = ?`,
+           WHERE s.id = ? AND s.user_id = ?`,
         )
-        .get(id) as SessionRow | undefined) ?? null
+        .get(id, userId) as SessionRow | undefined) ?? null
     );
   }
 
-  listCategories(): CategoryRow[] {
+  listCategories(userId: string): CategoryRow[] {
     return this.db
       .prepare(
         `SELECT id, name, created_at
          FROM categories
+         WHERE user_id = ?
          ORDER BY LOWER(name) ASC`,
       )
-      .all() as CategoryRow[];
+      .all(userId) as CategoryRow[];
   }
 
-  createCategory(name: string): CategoryRow {
+  createCategory(userId: string, name: string): CategoryRow {
     const normalized = name.trim().slice(0, 64);
     if (!normalized) {
       throw new Error("Category name is required.");
     }
 
     const existing = this.db
-      .prepare(`SELECT id, name, created_at FROM categories WHERE LOWER(name) = LOWER(?)`)
-      .get(normalized) as CategoryRow | undefined;
+      .prepare(`SELECT id, name, created_at FROM categories WHERE user_id = ? AND LOWER(name) = LOWER(?)`)
+      .get(userId, normalized) as CategoryRow | undefined;
 
     if (existing) {
       return existing;
@@ -286,24 +377,27 @@ export class MemoraStore {
     };
 
     this.db
-      .prepare(`INSERT INTO categories (id, name, created_at) VALUES (@id, @name, @created_at)`)
-      .run(row);
+      .prepare(`INSERT INTO categories (id, user_id, name, created_at) VALUES (@id, @user_id, @name, @created_at)`)
+      .run({
+        ...row,
+        user_id: userId,
+      });
 
     return row;
   }
 
-  deleteCategory(categoryId: string) {
+  deleteCategory(userId: string, categoryId: string) {
     const tx = this.db.transaction(() => {
-      this.db.prepare(`UPDATE sessions SET category_id = NULL WHERE category_id = ?`).run(categoryId);
-      this.db.prepare(`DELETE FROM categories WHERE id = ?`).run(categoryId);
+      this.db.prepare(`UPDATE sessions SET category_id = NULL WHERE category_id = ? AND user_id = ?`).run(categoryId, userId);
+      this.db.prepare(`DELETE FROM categories WHERE id = ? AND user_id = ?`).run(categoryId, userId);
     });
 
     tx();
   }
 
-  assignSessionCategory(sessionId: string, categoryId: string | null) {
+  assignSessionCategory(userId: string, sessionId: string, categoryId: string | null) {
     if (categoryId) {
-      const categoryExists = this.db.prepare(`SELECT id FROM categories WHERE id = ?`).get(categoryId) as
+      const categoryExists = this.db.prepare(`SELECT id FROM categories WHERE id = ? AND user_id = ?`).get(categoryId, userId) as
         | { id: string }
         | undefined;
       if (!categoryExists) {
@@ -312,11 +406,19 @@ export class MemoraStore {
     }
 
     this.db
-      .prepare(`UPDATE sessions SET category_id = @category_id WHERE id = @id`)
-      .run({ id: sessionId, category_id: categoryId });
+      .prepare(`UPDATE sessions SET category_id = @category_id WHERE id = @id AND user_id = @user_id`)
+      .run({ id: sessionId, category_id: categoryId, user_id: userId });
   }
 
-  deleteSession(sessionId: string) {
+  deleteSession(userId: string, sessionId: string) {
+    const session = this.db
+      .prepare(`SELECT id FROM sessions WHERE id = ? AND user_id = ?`)
+      .get(sessionId, userId) as { id: string } | undefined;
+
+    if (!session) {
+      return;
+    }
+
     const tx = this.db.transaction(() => {
       this.db.prepare(`DELETE FROM extracted_chunks WHERE session_id = ?`).run(sessionId);
 
@@ -325,23 +427,24 @@ export class MemoraStore {
       }
 
       this.db.prepare(`DELETE FROM processing_jobs WHERE session_id = ?`).run(sessionId);
-      this.db.prepare(`DELETE FROM sessions WHERE id = ?`).run(sessionId);
+      this.db.prepare(`DELETE FROM sessions WHERE id = ? AND user_id = ?`).run(sessionId, userId);
     });
 
     tx();
   }
 
-  listSessionsByCategory(categoryId: string | null, limit = 200): SessionRow[] {
+  listSessionsByCategory(userId: string, categoryId: string | null, limit = 200): SessionRow[] {
     if (!categoryId) {
       return this.db
         .prepare(
           `SELECT s.id, s.mode, s.started_at, s.stopped_at, s.file_path, s.status, s.category_id, c.name AS category_name, s.created_at
            FROM sessions s
            LEFT JOIN categories c ON c.id = s.category_id
+           WHERE s.user_id = ?
            ORDER BY s.started_at DESC
            LIMIT ?`,
         )
-        .all(limit) as SessionRow[];
+        .all(userId, limit) as SessionRow[];
     }
 
     return this.db
@@ -349,11 +452,11 @@ export class MemoraStore {
         `SELECT s.id, s.mode, s.started_at, s.stopped_at, s.file_path, s.status, s.category_id, c.name AS category_name, s.created_at
          FROM sessions s
          LEFT JOIN categories c ON c.id = s.category_id
-         WHERE s.category_id = ?
+        WHERE s.category_id = ? AND s.user_id = ?
          ORDER BY s.started_at DESC
          LIMIT ?`,
       )
-      .all(categoryId, limit) as SessionRow[];
+      .all(categoryId, userId, limit) as SessionRow[];
   }
 
   queueProcessingJobs(sessionId: string) {
@@ -397,27 +500,30 @@ export class MemoraStore {
     tx();
   }
 
-  getSettings(): Record<string, unknown> {
+  getSettings(userId: string): Record<string, unknown> {
     const rows = this.db
       .prepare(
         `SELECT key, value
-         FROM app_settings`,
+         FROM app_settings
+         WHERE key LIKE ?`,
       )
-      .all() as Array<{ key: string; value: string }>;
+      .all(`${userId}:%`) as Array<{ key: string; value: string }>;
 
     const out: Record<string, unknown> = {};
     for (const row of rows) {
       try {
-        out[row.key] = JSON.parse(row.value);
+        const normalizedKey = row.key.startsWith(`${userId}:`) ? row.key.slice(userId.length + 1) : row.key;
+        out[normalizedKey] = JSON.parse(row.value);
       } catch {
-        out[row.key] = row.value;
+        const normalizedKey = row.key.startsWith(`${userId}:`) ? row.key.slice(userId.length + 1) : row.key;
+        out[normalizedKey] = row.value;
       }
     }
 
     return out;
   }
 
-  updateSettings(updates: Record<string, unknown>) {
+  updateSettings(userId: string, updates: Record<string, unknown>) {
     const now = new Date().toISOString();
     const upsert = this.db.prepare(
       `INSERT OR REPLACE INTO app_settings (key, value, updated_at)
@@ -431,7 +537,7 @@ export class MemoraStore {
         }
 
         upsert.run({
-          key,
+          key: `${userId}:${key}`,
           value: JSON.stringify(value),
           updated_at: now,
         });
@@ -609,8 +715,18 @@ export class MemoraStore {
     };
   }
 
-  getSessionDetail(sessionId: string): SessionDetail {
-    const session = this.getSessionById(sessionId);
+  getSessionDetail(userId: string, sessionId: string): SessionDetail {
+    const session = this.getSessionById(userId, sessionId);
+
+    if (!session) {
+      return {
+        session: null,
+        jobs: [],
+        chunks: [],
+        health: null,
+      };
+    }
+
     const jobs = this.db
       .prepare(
         `SELECT id, session_id, job_type, status, error_message, started_at, finished_at, created_at
@@ -634,7 +750,7 @@ export class MemoraStore {
     return { session, jobs, chunks, health };
   }
 
-  searchExtractedContent(query: string, limit = 25): SearchResultRow[] {
+  searchExtractedContent(userId: string, query: string, limit = 25): SearchResultRow[] {
     const normalized = query.trim();
     if (!normalized) {
       return [];
@@ -655,12 +771,13 @@ export class MemoraStore {
          JOIN extracted_chunks ec ON ec.id = extracted_chunks_fts.chunk_id
          JOIN sessions s ON s.id = ec.session_id
          WHERE extracted_chunks_fts MATCH ?
+           AND s.user_id = ?
          ORDER BY rank ASC, ec.created_at DESC
          LIMIT ?`,
       );
 
       try {
-        return ftsQuery.all(normalized, limit) as SearchResultRow[];
+        return ftsQuery.all(normalized, userId, limit) as SearchResultRow[];
       } catch {
         // Continue to LIKE fallback when query syntax is invalid for FTS.
       }
@@ -680,13 +797,14 @@ export class MemoraStore {
          FROM extracted_chunks ec
          JOIN sessions s ON s.id = ec.session_id
          WHERE ec.content LIKE '%' || ? || '%'
+           AND s.user_id = ?
          ORDER BY ec.created_at DESC
          LIMIT ?`,
       )
-      .all(normalized, limit) as SearchResultRow[];
+      .all(normalized, userId, limit) as SearchResultRow[];
   }
 
-  listRecentExtractedRows(limit = 120, chunkType?: "ocr" | "transcript"): SearchResultRow[] {
+  listRecentExtractedRows(userId: string, limit = 120, chunkType?: "ocr" | "transcript"): SearchResultRow[] {
     if (chunkType) {
       return this.db
         .prepare(
@@ -702,10 +820,11 @@ export class MemoraStore {
            FROM extracted_chunks ec
            JOIN sessions s ON s.id = ec.session_id
            WHERE ec.chunk_type = ?
+             AND s.user_id = ?
            ORDER BY ec.created_at DESC
            LIMIT ?`,
         )
-        .all(chunkType, limit) as SearchResultRow[];
+          .all(chunkType, userId, limit) as SearchResultRow[];
     }
 
     return this.db
@@ -721,10 +840,11 @@ export class MemoraStore {
            9999.0 AS rank
          FROM extracted_chunks ec
          JOIN sessions s ON s.id = ec.session_id
+        WHERE s.user_id = ?
          ORDER BY ec.created_at DESC
          LIMIT ?`,
       )
-      .all(limit) as SearchResultRow[];
+      .all(userId, limit) as SearchResultRow[];
   }
 }
 

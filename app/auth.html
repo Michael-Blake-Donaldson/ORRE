@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob: file: data:; connect-src 'self';" />
+    <title>Memora Login</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="auth-shell">
+      <section class="auth-card panel">
+        <div class="brand-lockup auth-brand-lockup">
+          <img class="brand-logo" src="./assets/memora-logo.png" alt="Memora logo" />
+          <div class="brand">Memora</div>
+        </div>
+
+        <h1>Sign In</h1>
+        <p class="status">Create an account or log in to keep recordings and settings private to your profile.</p>
+
+        <div class="auth-tabs">
+          <button id="showLoginBtn" class="button button--mini button--primary" type="button">Login</button>
+          <button id="showRegisterBtn" class="button button--mini" type="button">Register</button>
+        </div>
+
+        <form id="loginForm" class="auth-form">
+          <div class="field-row">
+            <label for="loginEmail">Email</label>
+            <input id="loginEmail" type="email" autocomplete="username" required />
+          </div>
+          <div class="field-row">
+            <label for="loginPassword">Password</label>
+            <input id="loginPassword" type="password" autocomplete="current-password" required />
+          </div>
+          <button class="button button--primary" type="submit">Login</button>
+        </form>
+
+        <form id="registerForm" class="auth-form auth-form--hidden">
+          <div class="field-row">
+            <label for="registerName">Display Name</label>
+            <input id="registerName" type="text" autocomplete="name" required />
+          </div>
+          <div class="field-row">
+            <label for="registerEmail">Email</label>
+            <input id="registerEmail" type="email" autocomplete="username" required />
+          </div>
+          <div class="field-row">
+            <label for="registerPassword">Password</label>
+            <input id="registerPassword" type="password" autocomplete="new-password" minlength="8" required />
+          </div>
+          <button class="button button--primary" type="submit">Create Account</button>
+        </form>
+
+        <p id="authStatus" class="status">Ready.</p>
+      </section>
+    </main>
+
+    <script type="module" src="./auth.js"></script>
+  </body>
+</html>
