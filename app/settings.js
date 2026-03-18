@@ -10,6 +10,10 @@ const screenPermissionStatus = document.getElementById("screenPermissionStatus")
 const micPermissionStatus = document.getElementById("micPermissionStatus");
 const navButtons = Array.from(document.querySelectorAll(".nav-item[data-page]"));
 const backToTopBtn = document.getElementById("backToTopBtn");
+const diagBridgeLoaded = document.getElementById("diagBridgeLoaded");
+const diagSourceCount = document.getElementById("diagSourceCount");
+const diagSelectedSource = document.getElementById("diagSelectedSource");
+const diagLastError = document.getElementById("diagLastError");
 
 const DEFAULT_SETTINGS = {
   defaultMode: "session",
@@ -21,6 +25,31 @@ const permissionState = {
   screen: localStorage.getItem("memora-permission-screen") === "granted" ? "granted" : "unknown",
   mic: localStorage.getItem("memora-permission-mic") === "granted" ? "granted" : "unknown",
 };
+
+const diagnostics = {
+  bridgeLoaded: false,
+  sourceCount: 0,
+  selectedSource: "none",
+  lastCaptureError: "none",
+};
+
+function refreshDiagnosticsUI() {
+  if (diagBridgeLoaded) {
+    diagBridgeLoaded.textContent = diagnostics.bridgeLoaded ? "true" : "false";
+  }
+
+  if (diagSourceCount) {
+    diagSourceCount.textContent = String(diagnostics.sourceCount);
+  }
+
+  if (diagSelectedSource) {
+    diagSelectedSource.textContent = diagnostics.selectedSource;
+  }
+
+  if (diagLastError) {
+    diagLastError.textContent = diagnostics.lastCaptureError;
+  }
+}
 
 function getMemoraApi() {
   if (window.memora) {
@@ -154,6 +183,36 @@ async function loadSettings() {
   const settings = await api.getSettings();
   renderSettingsForm(settings);
   setStatus("Loaded saved settings.");
+  await refreshDiagnostics();
+}
+
+async function refreshDiagnostics() {
+  const api = getMemoraApi();
+
+  diagnostics.bridgeLoaded = Boolean(api);
+  diagnostics.lastCaptureError = localStorage.getItem("memora-last-capture-error") ?? "none";
+
+  if (!api) {
+    diagnostics.sourceCount = 0;
+    diagnostics.selectedSource = "none";
+    refreshDiagnosticsUI();
+    return;
+  }
+
+  try {
+    const sources = await api.listDisplaySources();
+    diagnostics.sourceCount = Array.isArray(sources) ? sources.length : 0;
+  } catch (error) {
+    diagnostics.sourceCount = 0;
+    diagnostics.lastCaptureError = error?.name ?? "source-list-failed";
+  }
+
+  const sourceStrategy = settingSourceStrategy?.value ?? DEFAULT_SETTINGS.sourceStrategy;
+  const rememberedSource = localStorage.getItem("memora-last-selected-source");
+  diagnostics.selectedSource =
+    sourceStrategy === "system-picker" ? "system-picker" : rememberedSource ?? "remember-last";
+
+  refreshDiagnosticsUI();
 }
 
 async function saveSettings() {
@@ -170,6 +229,7 @@ async function saveSettings() {
 
   renderSettingsForm(response.settings);
   setStatus("Settings saved.");
+  await refreshDiagnostics();
 }
 
 async function resetSettingsToDefaults() {
@@ -186,6 +246,7 @@ async function resetSettingsToDefaults() {
 
   renderSettingsForm(response.settings);
   setStatus("Settings reset to defaults.");
+  await refreshDiagnostics();
 }
 
 function setupNavigation() {
@@ -235,6 +296,14 @@ resetSettingsBtn?.addEventListener("click", async () => {
   await resetSettingsToDefaults();
 });
 
+settingSourceStrategy?.addEventListener("change", () => {
+  refreshDiagnostics().catch((error) => {
+    diagnostics.lastCaptureError = error?.name ?? "diagnostics-unavailable";
+    refreshDiagnosticsUI();
+    console.error(error);
+  });
+});
+
 grantScreenBtn?.addEventListener("click", async () => {
   const result = await requestScreenPermission();
   setStatus(result.granted ? "Screen permission granted." : "Screen permission was not granted. You can retry anytime.");
@@ -260,5 +329,11 @@ setupBackToTop();
 refreshPermissionUI();
 loadSettings().catch((error) => {
   setStatus("Could not load settings.");
+  console.error(error);
+});
+
+refreshDiagnostics().catch((error) => {
+  diagnostics.lastCaptureError = error?.name ?? "diagnostics-unavailable";
+  refreshDiagnosticsUI();
   console.error(error);
 });

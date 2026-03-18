@@ -95,6 +95,11 @@ function refreshDiagnosticsUI() {
   }
 }
 
+function persistDiagnosticsState() {
+  localStorage.setItem("memora-last-selected-source", diagnostics.selectedSource);
+  localStorage.setItem("memora-last-capture-error", diagnostics.lastCaptureError);
+}
+
 function setupNavigation() {
   navButtons.forEach((button) => {
     button.addEventListener("click", () => {
@@ -384,6 +389,7 @@ function getMemoraApi() {
   diagnostics.bridgeLoaded = false;
   diagnostics.lastCaptureError = "bridge-unavailable";
   refreshDiagnosticsUI();
+  persistDiagnosticsState();
 
   statusText.textContent = "Desktop bridge failed to load. Restart Memora from terminal with npm run dev.";
 
@@ -520,6 +526,7 @@ async function refreshDisplaySources() {
   selectedDisplaySourceId = resolvedSourceId === SYSTEM_PICKER_VALUE ? null : resolvedSourceId;
   diagnostics.selectedSource = selectedDisplaySourceId ?? "system-picker";
   refreshDiagnosticsUI();
+  persistDiagnosticsState();
   await api.setPreferredDisplaySource(selectedDisplaySourceId);
 }
 
@@ -534,6 +541,7 @@ async function requestScreenPermission() {
   } catch (error) {
     diagnostics.lastCaptureError = error?.name ?? "capture-start-failed";
     refreshDiagnosticsUI();
+    persistDiagnosticsState();
 
     permissionState.screen = error?.name === "NotAllowedError" ? "denied" : "unknown";
     persistPermissionState("screen", permissionState.screen);
@@ -1431,6 +1439,7 @@ sourceSelect.addEventListener("change", async () => {
   selectedDisplaySourceId = sourceSelect.value === SYSTEM_PICKER_VALUE ? null : sourceSelect.value || null;
   diagnostics.selectedSource = selectedDisplaySourceId ?? "system-picker";
   refreshDiagnosticsUI();
+  persistDiagnosticsState();
   await api.setPreferredDisplaySource(selectedDisplaySourceId);
 });
 
@@ -1826,6 +1835,7 @@ replayBtn?.addEventListener("click", async () => {
     statusText.textContent = "Replay playback failed.";
     diagnostics.lastCaptureError = error?.name ?? "replay-load-failed";
     refreshDiagnosticsUI();
+    persistDiagnosticsState();
   } finally {
     if (replayBtn && currentSessionDetail?.session?.file_path) {
       replayBtn.disabled = false;
@@ -1871,6 +1881,7 @@ generateSummaryBtn.addEventListener("click", async () => {
     sessionSummary.textContent = "Failed to generate summary for this session.";
     diagnostics.lastCaptureError = error?.name ?? "summary-failed";
     refreshDiagnosticsUI();
+    persistDiagnosticsState();
   } finally {
     generateSummaryBtn.disabled = false;
   }
@@ -1914,6 +1925,7 @@ refreshDisplaySources().catch((error) => {
   statusText.textContent = "Could not load capture sources.";
   diagnostics.lastCaptureError = error?.name ?? "source-list-failed";
   refreshDiagnosticsUI();
+  persistDiagnosticsState();
   console.error(error);
 });
 
