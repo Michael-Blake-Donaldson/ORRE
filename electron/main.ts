@@ -17,6 +17,21 @@ import { buildAskMemoraAnswer } from "./qa.js";
 import { buildSessionSummary } from "./summary.js";
 import { ensureAppServer, stopAppServer } from "./appServer.js";
 import {
+  assignCloudSessionCategory,
+  createCloudCategory,
+  deleteCloudCategory,
+  deleteCloudSession,
+  getCloudSessionDetail,
+  getCloudSettings,
+  listCloudCategories,
+  listCloudSessions,
+  listCloudSessionsByCategory,
+  listRecentCloudExtractedRows,
+  searchCloudExtractedContent,
+  syncCloudSessionDetail,
+  updateCloudSettings,
+} from "./supabaseData.js";
+import {
   beginSupabaseTotpEnrollment,
   disableSupabaseMfaFactor,
   getSupabaseSessionState,
@@ -46,7 +61,9 @@ let activeUserId: string | null = null;
 let activeAuthUser: AuthUser | null = null;
 let currentAppOrigin = "http://localhost";
 const store = createDb(app.getPath("userData")) as MemoraStore;
-const processingQueue = new ProcessingQueue(store);
+const processingQueue = new ProcessingQueue(store, async (sessionId) => {
+  await syncSessionToCloud(sessionId);
+});
 
 type AuthUser = {
   id: string;
@@ -194,6 +211,33 @@ function syncShadowUser(authUser: AuthUser, options?: { lastLoginAt?: string | n
     createdAt: new Date().toISOString(),
     lastLoginAt: options?.lastLoginAt ?? null,
   });
+}
+
+async function canUseCloudData() {
+  if (!isSupabaseAuthConfigured() || !activeAuthUser) {
+    return false;
+  }
+
+  const sessionState = await getSupabaseSessionState();
+  return sessionState.ok && sessionState.active && sessionState.userId === activeAuthUser.id;
+}
+
+async function syncSessionToCloud(sessionId: string) {
+  if (!(await canUseCloudData())) {
+    return;
+  }
+
+  const userId = getActiveUserId();
+  if (!userId) {
+    return;
+  }
+
+  const detail = store.getSessionDetail(userId, sessionId);
+  if (!detail.session) {
+    return;
+  }
+
+  await syncCloudSessionDetail(detail);
 }
 
 function parseSettings(raw: Record<string, unknown>): AppSettings {
@@ -1070,6 +1114,8 @@ ipcMain.handle("recording:start", async (_event, mode: RecordingMode) => {
     startedAt: recordingStartedAt,
   });
 
+  await syncSessionToCloud(activeSessionId);
+
   return {
     ok: true,
     sessionId: activeSessionId,
@@ -1094,6 +1140,7 @@ ipcMain.handle("recording:stop", async () => {
       userId,
       stoppedAt,
     });
+    await syncSessionToCloud(stoppedSessionId);
   }
 
   const response = {
@@ -1138,6 +1185,8 @@ ipcMain.handle("recording:save", async (_event, payload: { sessionId: string; by
     filePath: result.filePath,
   });
 
+  await syncSessionToCloud(payload.sessionId);
+
   // Queue asynchronous extraction work so UI is responsive.
   processingQueue.enqueue({ sessionId: payload.sessionId, filePath: result.filePath });
 
@@ -1150,6 +1199,10 @@ ipcMain.handle("sessions:list", async () => {
     return [] as SessionRow[];
   }
 
+  if (await canUseCloudData()) {
+    return listCloudSessions(20);
+  }
+
   const rows = store.listSessions(userId, 20) as SessionRow[];
 
   return rows;
@@ -1159,6 +1212,10 @@ ipcMain.handle("sessions:listByCategory", async (_event, payload: { categoryId: 
   const userId = getActiveUserId();
   if (!userId) {
     return [] as SessionRow[];
+  }
+
+  if (await canUseCloudData()) {
+    return listCloudSessionsByCategory(payload.categoryId ?? null, payload.limit ?? 200);
   }
 
   return store.listSessionsByCategory(userId, payload.categoryId ?? null, payload.limit ?? 200);
@@ -1173,6 +1230,17 @@ ipcMain.handle("sessions:getDetail", async (_event, sessionId: string) => {
       chunks: [],
       health: null,
     };
+  }
+
+  if (await canUseCloudData()) {
+    return (
+      (await getCloudSessionDetail(sessionId)) ?? {
+        session: null,
+        jobs: [],
+        chunks: [],
+        health: null,
+      }
+    );
   }
 
   return store.getSessionDetail(userId, sessionId);
@@ -1210,6 +1278,10 @@ ipcMain.handle("settings:get", async () => {
     return parseSettings({});
   }
 
+  if (await canUseCloudData()) {
+    return parseSettings(await getCloudSettings());
+  }
+
   return parseSettings(store.getSettings(userId));
 });
 
@@ -1222,6 +1294,14 @@ ipcMain.handle("settings:update", async (_event, updates: Partial<AppSettings>) 
   const current = parseSettings(store.getSettings(userId));
   const next = parseSettings({ ...current, ...updates });
   store.updateSettings(userId, next as Record<string, unknown>);
+
+  if (await canUseCloudData()) {
+    const cloudResult = await updateCloudSettings(next as Record<string, unknown>);
+    if (!cloudResult.ok) {
+      return { ok: false, reason: cloudResult.reason, settings: next };
+    }
+  }
+
   return { ok: true, settings: next };
 });
 
@@ -1262,6 +1342,15 @@ ipcMain.handle("sessions:assignCategory", async (_event, payload: { sessionId: s
 
   try {
     store.assignSessionCategory(userId, payload.sessionId, payload.categoryId);
+
+    if (await canUseCloudData()) {
+      const cloudResult = await assignCloudSessionCategory(payload.sessionId, payload.categoryId);
+      if (!cloudResult.ok) {
+        return { ok: false, reason: cloudResult.reason };
+      }
+    }
+
+    await syncSessionToCloud(payload.sessionId);
     return { ok: true };
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message : "assign-failed" };
@@ -1275,6 +1364,14 @@ ipcMain.handle("sessions:delete", async (_event, sessionId: string) => {
   }
 
   store.deleteSession(userId, sessionId);
+
+  if (await canUseCloudData()) {
+    const cloudResult = await deleteCloudSession(sessionId);
+    if (!cloudResult.ok) {
+      return { ok: false, reason: cloudResult.reason };
+    }
+  }
+
   return { ok: true };
 });
 
@@ -1282,6 +1379,10 @@ ipcMain.handle("categories:list", async () => {
   const userId = getActiveUserId();
   if (!userId) {
     return [];
+  }
+
+  if (await canUseCloudData()) {
+    return listCloudCategories();
   }
 
   return store.listCategories(userId);
@@ -1294,6 +1395,10 @@ ipcMain.handle("categories:create", async (_event, name: string) => {
   }
 
   try {
+    if (await canUseCloudData()) {
+      return await createCloudCategory(name);
+    }
+
     const row = store.createCategory(userId, name);
     return { ok: true, category: row };
   } catch (error) {
@@ -1307,6 +1412,13 @@ ipcMain.handle("categories:delete", async (_event, categoryId: string) => {
     return { ok: false, reason: "auth-required" };
   }
 
+  if (await canUseCloudData()) {
+    const cloudResult = await deleteCloudCategory(categoryId);
+    if (!cloudResult.ok) {
+      return { ok: false, reason: cloudResult.reason };
+    }
+  }
+
   store.deleteCategory(userId, categoryId);
   return { ok: true };
 });
@@ -1317,6 +1429,10 @@ ipcMain.handle("search:content", async (_event, payload: { query: string; limit?
     return [];
   }
 
+  if (await canUseCloudData()) {
+    return searchCloudExtractedContent(payload.query, payload.limit ?? 25);
+  }
+
   return store.searchExtractedContent(userId, payload.query, payload.limit ?? 25);
 });
 
@@ -1324,6 +1440,21 @@ ipcMain.handle("ask:query", async (_event, payload: { question: string; limit?: 
   const userId = getActiveUserId();
   if (!userId) {
     return buildAskMemoraAnswer(payload.question, []);
+  }
+
+  if (await canUseCloudData()) {
+    const primaryRows = await searchCloudExtractedContent(payload.question, payload.limit ?? 80);
+    const transcriptRows = await listRecentCloudExtractedRows(220, "transcript");
+    const ocrRows = await listRecentCloudExtractedRows(220, "ocr");
+
+    const mergedMap = new Map<string, (typeof primaryRows)[number]>();
+    for (const row of [...primaryRows, ...transcriptRows, ...ocrRows]) {
+      if (!mergedMap.has(row.chunk_id)) {
+        mergedMap.set(row.chunk_id, row);
+      }
+    }
+
+    return buildAskMemoraAnswer(payload.question, [...mergedMap.values()]);
   }
 
   const primaryRows = store.searchExtractedContent(userId, payload.question, payload.limit ?? 80);
@@ -1346,6 +1477,11 @@ ipcMain.handle("sessions:generateSummary", async (_event, sessionId: string) => 
   const userId = getActiveUserId();
   if (!userId) {
     return buildSessionSummary([]);
+  }
+
+  if (await canUseCloudData()) {
+    const detail = await getCloudSessionDetail(sessionId);
+    return buildSessionSummary(detail?.chunks ?? []);
   }
 
   const detail = store.getSessionDetail(userId, sessionId);

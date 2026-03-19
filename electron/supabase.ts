@@ -64,7 +64,7 @@ export function isSupabaseAuthConfigured() {
   return Boolean(getConfiguredUrl() && getConfiguredAnonKey());
 }
 
-function getSupabaseClient() {
+export function getSupabaseClient() {
   if (!isSupabaseAuthConfigured()) {
     return null;
   }

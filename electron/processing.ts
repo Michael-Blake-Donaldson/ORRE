@@ -13,7 +13,10 @@ export class ProcessingQueue {
   private readonly activeSessions = new Set<string>();
   private isRunning = false;
 
-  constructor(private readonly store: MemoraStore) {}
+  constructor(
+    private readonly store: MemoraStore,
+    private readonly onSessionUpdated?: (sessionId: string) => Promise<void> | void,
+  ) {}
 
   enqueue(task: ProcessingTask) {
     if (this.activeSessions.has(task.sessionId) || this.queue.some((item) => item.sessionId === task.sessionId)) {
@@ -21,6 +24,7 @@ export class ProcessingQueue {
     }
 
     this.store.queueProcessingJobs(task.sessionId);
+    void this.onSessionUpdated?.(task.sessionId);
     this.queue.push(task);
     this.activeSessions.add(task.sessionId);
     void this.processNext();
@@ -71,10 +75,12 @@ export class ProcessingQueue {
             },
           ];
           this.store.replaceExtractedChunks(task.sessionId, "ocr", latestOcrChunks);
+          void this.onSessionUpdated?.(task.sessionId);
           return;
         }
 
         this.store.replaceExtractedChunks(task.sessionId, "ocr", ocrChunks);
+        void this.onSessionUpdated?.(task.sessionId);
       } finally {
         await cleanupExtractedFrames(framePaths);
       }
@@ -99,10 +105,12 @@ export class ProcessingQueue {
             confidence: 0.35,
           },
         ]);
+        void this.onSessionUpdated?.(task.sessionId);
         return;
       }
 
       this.store.replaceExtractedChunks(task.sessionId, "transcript", combinedTranscriptChunks);
+      void this.onSessionUpdated?.(task.sessionId);
     });
   }
 
@@ -113,6 +121,7 @@ export class ProcessingQueue {
       status: "running",
       startedAt: new Date().toISOString(),
     });
+    void this.onSessionUpdated?.(sessionId);
 
     try {
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -124,6 +133,7 @@ export class ProcessingQueue {
         status: "completed",
         finishedAt: new Date().toISOString(),
       });
+      void this.onSessionUpdated?.(sessionId);
     } catch (error) {
       this.store.updateProcessingJob({
         sessionId,
@@ -132,6 +142,7 @@ export class ProcessingQueue {
         errorMessage: error instanceof Error ? error.message : "Unknown processing failure",
         finishedAt: new Date().toISOString(),
       });
+      void this.onSessionUpdated?.(sessionId);
     }
   }
 }
