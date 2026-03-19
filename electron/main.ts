@@ -375,6 +375,10 @@ ipcMain.handle("auth:login", async (_event, payload: { email: string; password: 
     const cloud = await loginWithSupabase(email, password);
     if (!cloud.ok) {
       if (cloud.reason === "mfa-required") {
+        if (!("factorId" in cloud) || !("challengeId" in cloud)) {
+          return { ok: false, reason: "Could not initialize MFA challenge." };
+        }
+
         return {
           ok: false,
           reason: cloud.reason,

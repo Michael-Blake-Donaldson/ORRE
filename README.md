@@ -42,11 +42,11 @@ SUPABASE_PUBLISHABLE_KEY=your-publishable-key
 In Supabase dashboard:
 
 1. Auth -> Providers -> Email:
-	1. Enable Email provider
-	1. Enable "Confirm email"
+   1. Enable Email provider
+   1. Enable "Confirm email"
 1. Auth -> Multi-factor:
-	1. Enable TOTP MFA
-	1. Require MFA for users who enroll factors
+   1. Enable TOTP MFA
+   1. Require MFA for users who enroll factors
 
 Memora now enforces verified email for Supabase logins and supports MFA code challenge/verification during sign-in.
 
