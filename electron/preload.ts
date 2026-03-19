@@ -115,6 +115,27 @@ const api = {
       | { ok: false; reason: string }
     >;
   },
+  passkeyBeginRegistration: async () => {
+    return ipcRenderer.invoke("auth:passkeyBeginRegistration") as Promise<
+      | { ok: true; options: Record<string, unknown> }
+      | { ok: false; reason: string }
+    >;
+  },
+  passkeyFinishRegistration: async (payload: { challenge: string; response: Record<string, unknown> }) => {
+    return ipcRenderer.invoke("auth:passkeyFinishRegistration", payload) as Promise<{ ok: true } | { ok: false; reason: string }>;
+  },
+  passkeyBeginLogin: async (payload: { email: string }) => {
+    return ipcRenderer.invoke("auth:passkeyBeginLogin", payload) as Promise<
+      | { ok: true; options: Record<string, unknown> }
+      | { ok: false; reason: string }
+    >;
+  },
+  passkeyFinishLogin: async (payload: { email: string; challenge: string; response: Record<string, unknown> }) => {
+    return ipcRenderer.invoke("auth:passkeyFinishLogin", payload) as Promise<
+      | { ok: true; user: AuthUser }
+      | { ok: false; reason: string }
+    >;
+  },
   verifyMfaLogin: async (payload: { factorId: string; challengeId: string; code: string }) => {
     return ipcRenderer.invoke("auth:verifyMfa", payload) as Promise<
       | { ok: true; user: AuthUser }

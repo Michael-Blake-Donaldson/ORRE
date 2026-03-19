@@ -5,6 +5,7 @@ import path from "node:path";
 import { promises as fs } from "node:fs";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { dialog } from "electron";
+import { generateAuthenticationOptions, generateRegistrationOptions, verifyAuthenticationResponse, verifyRegistrationResponse, } from "@simplewebauthn/server";
 import { createDb } from "./db.js";
 import { ProcessingQueue } from "./processing.js";
 import { buildAskMemoraAnswer } from "./qa.js";
@@ -21,6 +22,7 @@ let activeSessionId = null;
 let preferredDisplaySourceId = null;
 let activeUserId = null;
 let activeAuthUser = null;
+let currentAppOrigin = "http://localhost";
 const store = createDb(app.getPath("userData"));
 const processingQueue = new ProcessingQueue(store);
 const DEFAULT_SETTINGS = {
@@ -38,6 +40,58 @@ const LEGAL_DOCUMENT_VERSIONS = {
     terms: "2026-03-18.1",
     privacyPolicy: "2026-03-18.1",
 };
+const PASSKEY_RP_ID = "localhost";
+const PASSKEY_RP_NAME = "Memora";
+const PASSKEY_CHALLENGE_TTL_MS = 3 * 60 * 1000;
+const pendingPasskeyChallenges = new Map();
+function toBase64Url(bytes) {
+    return Buffer.from(bytes).toString("base64url");
+}
+function fromBase64Url(encoded) {
+    return Buffer.from(encoded, "base64url");
+}
+function clearExpiredPasskeyChallenges() {
+    const now = Date.now();
+    for (const [challenge, record] of pendingPasskeyChallenges.entries()) {
+        if (record.expiresAt <= now) {
+            pendingPasskeyChallenges.delete(challenge);
+        }
+    }
+}
+function savePasskeyChallenge(challenge, userId, type) {
+    clearExpiredPasskeyChallenges();
+    pendingPasskeyChallenges.set(challenge, {
+        type,
+        userId,
+        expiresAt: Date.now() + PASSKEY_CHALLENGE_TTL_MS,
+    });
+}
+function consumePasskeyChallenge(challenge, userId, type) {
+    clearExpiredPasskeyChallenges();
+    const record = pendingPasskeyChallenges.get(challenge);
+    if (!record) {
+        return false;
+    }
+    const valid = record.type === type && record.userId === userId && record.expiresAt > Date.now();
+    pendingPasskeyChallenges.delete(challenge);
+    return valid;
+}
+function parseStoredPasskeyTransports(value) {
+    if (!value) {
+        return [];
+    }
+    try {
+        const parsed = JSON.parse(value);
+        if (!Array.isArray(parsed)) {
+            return [];
+        }
+        return parsed.filter((item) => typeof item === "string");
+    }
+    catch {
+        return [];
+    }
+}
+const TEXT_ENCODER = new TextEncoder();
 function normalizeEmail(input) {
     return input.trim().toLowerCase();
 }
@@ -141,6 +195,7 @@ async function getAvailableDisplaySources() {
 }
 async function createWindow() {
     const appServer = await ensureAppServer(path.resolve(__dirname, "../app"));
+    currentAppOrigin = appServer.origin;
     mainWindow = new BrowserWindow({
         width: 1280,
         height: 820,
@@ -503,6 +558,187 @@ ipcMain.handle("auth:logout", async () => {
     activeSessionId = null;
     preferredDisplaySourceId = null;
     return { ok: true };
+});
+ipcMain.handle("auth:passkeyBeginRegistration", async () => {
+    if (isSupabaseAuthConfigured()) {
+        return { ok: false, reason: "Windows Hello passkeys are currently available for local accounts only." };
+    }
+    const userId = getActiveUserId();
+    if (!userId) {
+        return { ok: false, reason: "Sign in with your password first to enable Windows Hello." };
+    }
+    const user = store.getUserById(userId);
+    if (!user) {
+        return { ok: false, reason: "User account was not found." };
+    }
+    const existingPasskeys = store.listUserPasskeys(userId);
+    const options = await generateRegistrationOptions({
+        rpName: PASSKEY_RP_NAME,
+        rpID: PASSKEY_RP_ID,
+        userID: TEXT_ENCODER.encode(user.id),
+        userName: user.email,
+        userDisplayName: user.display_name,
+        timeout: 60000,
+        attestationType: "none",
+        authenticatorSelection: {
+            authenticatorAttachment: "platform",
+            residentKey: "required",
+            userVerification: "required",
+        },
+        excludeCredentials: existingPasskeys.map((credential) => ({
+            id: credential.credential_id,
+            type: "public-key",
+            transports: parseStoredPasskeyTransports(credential.transports),
+        })),
+    });
+    savePasskeyChallenge(options.challenge, userId, "registration");
+    return {
+        ok: true,
+        options,
+    };
+});
+ipcMain.handle("auth:passkeyFinishRegistration", async (_event, payload) => {
+    if (isSupabaseAuthConfigured()) {
+        return { ok: false, reason: "Windows Hello passkeys are currently available for local accounts only." };
+    }
+    const userId = getActiveUserId();
+    if (!userId) {
+        return { ok: false, reason: "Sign in with your password first to enable Windows Hello." };
+    }
+    if (!payload?.challenge || typeof payload.challenge !== "string") {
+        return { ok: false, reason: "Registration challenge is missing." };
+    }
+    const challengeValid = consumePasskeyChallenge(payload.challenge, userId, "registration");
+    if (!challengeValid) {
+        return { ok: false, reason: "Windows Hello setup timed out. Please try again." };
+    }
+    try {
+        const verification = await verifyRegistrationResponse({
+            response: payload.response,
+            expectedChallenge: payload.challenge,
+            expectedOrigin: currentAppOrigin,
+            expectedRPID: PASSKEY_RP_ID,
+            requireUserVerification: true,
+        });
+        if (!verification.verified || !verification.registrationInfo) {
+            return { ok: false, reason: "Windows Hello setup could not be verified." };
+        }
+        const credential = verification.registrationInfo.credential;
+        const now = new Date().toISOString();
+        store.upsertUserPasskey({
+            userId,
+            credentialId: credential.id,
+            publicKey: toBase64Url(credential.publicKey),
+            counter: credential.counter,
+            transports: credential.transports ?? [],
+            createdAt: now,
+        });
+        return { ok: true };
+    }
+    catch (error) {
+        return {
+            ok: false,
+            reason: error instanceof Error ? error.message : "Windows Hello setup failed.",
+        };
+    }
+});
+ipcMain.handle("auth:passkeyBeginLogin", async (_event, payload) => {
+    if (isSupabaseAuthConfigured()) {
+        return { ok: false, reason: "Windows Hello passkeys are currently available for local accounts only." };
+    }
+    const email = normalizeEmail(payload?.email ?? "");
+    if (!email || !email.includes("@")) {
+        return { ok: false, reason: "Enter your account email to use Windows Hello." };
+    }
+    const user = store.getUserByEmail(email);
+    if (!user) {
+        return { ok: false, reason: "No local account was found for this email." };
+    }
+    const passkeys = store.listUserPasskeys(user.id);
+    if (!passkeys.length) {
+        return { ok: false, reason: "Windows Hello is not set up yet for this account on this device." };
+    }
+    const options = await generateAuthenticationOptions({
+        rpID: PASSKEY_RP_ID,
+        timeout: 60000,
+        userVerification: "required",
+        allowCredentials: passkeys.map((credential) => ({
+            id: credential.credential_id,
+            type: "public-key",
+            transports: parseStoredPasskeyTransports(credential.transports),
+        })),
+    });
+    savePasskeyChallenge(options.challenge, user.id, "authentication");
+    return {
+        ok: true,
+        options,
+    };
+});
+ipcMain.handle("auth:passkeyFinishLogin", async (_event, payload) => {
+    if (isSupabaseAuthConfigured()) {
+        return { ok: false, reason: "Windows Hello passkeys are currently available for local accounts only." };
+    }
+    const email = normalizeEmail(payload?.email ?? "");
+    if (!email || !email.includes("@")) {
+        return { ok: false, reason: "Enter your account email to use Windows Hello." };
+    }
+    const user = store.getUserByEmail(email);
+    if (!user) {
+        return { ok: false, reason: "No local account was found for this email." };
+    }
+    if (!payload?.challenge || typeof payload.challenge !== "string") {
+        return { ok: false, reason: "Authentication challenge is missing." };
+    }
+    const challengeValid = consumePasskeyChallenge(payload.challenge, user.id, "authentication");
+    if (!challengeValid) {
+        return { ok: false, reason: "Windows Hello request expired. Please try again." };
+    }
+    const credentialId = payload.response && typeof payload.response === "object" && "id" in payload.response
+        ? String(payload.response.id)
+        : "";
+    if (!credentialId) {
+        return { ok: false, reason: "Credential identifier is missing." };
+    }
+    const storedPasskey = store.getUserPasskeyByCredentialId(credentialId);
+    if (!storedPasskey || storedPasskey.user_id !== user.id) {
+        return { ok: false, reason: "Passkey was not recognized for this account." };
+    }
+    try {
+        const verification = await verifyAuthenticationResponse({
+            response: payload.response,
+            expectedChallenge: payload.challenge,
+            expectedOrigin: currentAppOrigin,
+            expectedRPID: PASSKEY_RP_ID,
+            requireUserVerification: true,
+            credential: {
+                id: storedPasskey.credential_id,
+                publicKey: fromBase64Url(storedPasskey.public_key),
+                counter: storedPasskey.counter,
+                transports: parseStoredPasskeyTransports(storedPasskey.transports),
+            },
+        });
+        if (!verification.verified || !verification.authenticationInfo) {
+            return { ok: false, reason: "Windows Hello sign-in could not be verified." };
+        }
+        const usedAt = new Date().toISOString();
+        store.updateUserPasskeyCounter(storedPasskey.credential_id, verification.authenticationInfo.newCounter, usedAt);
+        activeUserId = user.id;
+        activeAuthUser = toAuthUser(user);
+        recordingMode = "idle";
+        recordingStartedAt = null;
+        activeSessionId = null;
+        store.setUserLastLoginAt(user.id, usedAt);
+        return {
+            ok: true,
+            user: toAuthUser(user),
+        };
+    }
+    catch (error) {
+        return {
+            ok: false,
+            reason: error instanceof Error ? error.message : "Windows Hello sign-in failed.",
+        };
+    }
 });
 ipcMain.handle("recording:start", async (_event, mode) => {
     const userId = getActiveUserId();

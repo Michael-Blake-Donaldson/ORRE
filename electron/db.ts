@@ -96,6 +96,17 @@ export type LegalAcceptanceRow = {
   created_at: string;
 };
 
+export type UserPasskeyRow = {
+  id: string;
+  user_id: string;
+  credential_id: string;
+  public_key: string;
+  counter: number;
+  transports: string | null;
+  created_at: string;
+  last_used_at: string | null;
+};
+
 // MemoraStore centralizes DB access and prepared statements for speed and maintainability.
 export class MemoraStore {
   private readonly db: Database.Database;
@@ -193,6 +204,18 @@ export class MemoraStore {
         UNIQUE(user_id, document_type, document_version),
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       );
+
+      CREATE TABLE IF NOT EXISTS user_passkeys (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        credential_id TEXT NOT NULL UNIQUE,
+        public_key TEXT NOT NULL,
+        counter INTEGER NOT NULL,
+        transports TEXT,
+        created_at TEXT NOT NULL,
+        last_used_at TEXT,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
     `);
 
     this.ensureSessionCategoryColumn();
@@ -257,6 +280,7 @@ export class MemoraStore {
     this.db.exec(`CREATE INDEX IF NOT EXISTS idx_categories_user_id ON categories(user_id);`);
     this.db.exec(`CREATE INDEX IF NOT EXISTS idx_app_settings_user_key ON app_settings(user_id, key);`);
     this.db.exec(`CREATE INDEX IF NOT EXISTS idx_user_legal_acceptances_user_id ON user_legal_acceptances(user_id);`);
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_user_passkeys_user_id ON user_passkeys(user_id);`);
   }
 
   createUser(input: {
@@ -292,6 +316,64 @@ export class MemoraStore {
 
   setUserLastLoginAt(userId: string, timestamp: string) {
     this.db.prepare(`UPDATE users SET last_login_at = ? WHERE id = ?`).run(timestamp, userId);
+  }
+
+  listUserPasskeys(userId: string): UserPasskeyRow[] {
+    return this.db
+      .prepare(
+        `SELECT id, user_id, credential_id, public_key, counter, transports, created_at, last_used_at
+         FROM user_passkeys
+         WHERE user_id = ?
+         ORDER BY created_at DESC`,
+      )
+      .all(userId) as UserPasskeyRow[];
+  }
+
+  getUserPasskeyByCredentialId(credentialId: string): UserPasskeyRow | null {
+    return (
+      (this.db
+        .prepare(
+          `SELECT id, user_id, credential_id, public_key, counter, transports, created_at, last_used_at
+           FROM user_passkeys
+           WHERE credential_id = ?`,
+        )
+        .get(credentialId) as UserPasskeyRow | undefined) ?? null
+    );
+  }
+
+  upsertUserPasskey(input: {
+    userId: string;
+    credentialId: string;
+    publicKey: string;
+    counter: number;
+    transports: string[];
+    createdAt: string;
+  }) {
+    this.db
+      .prepare(
+        `INSERT INTO user_passkeys (id, user_id, credential_id, public_key, counter, transports, created_at, last_used_at)
+         VALUES (@id, @user_id, @credential_id, @public_key, @counter, @transports, @created_at, NULL)
+         ON CONFLICT(credential_id) DO UPDATE SET
+           user_id = excluded.user_id,
+           public_key = excluded.public_key,
+           counter = excluded.counter,
+           transports = excluded.transports`,
+      )
+      .run({
+        id: crypto.randomUUID(),
+        user_id: input.userId,
+        credential_id: input.credentialId,
+        public_key: input.publicKey,
+        counter: input.counter,
+        transports: input.transports.length ? JSON.stringify(input.transports) : null,
+        created_at: input.createdAt,
+      });
+  }
+
+  updateUserPasskeyCounter(credentialId: string, counter: number, usedAt: string) {
+    this.db
+      .prepare(`UPDATE user_passkeys SET counter = ?, last_used_at = ? WHERE credential_id = ?`)
+      .run(counter, usedAt, credentialId);
   }
 
   recordUserLegalAcceptances(

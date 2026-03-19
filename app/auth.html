@@ -76,6 +76,10 @@
               <span class="auth-legal-separator">and</span>
               <button id="privacyOpenBtn" class="auth-legal-link" type="button">Privacy Policy</button>
             </div>
+            <label class="auth-checkbox" for="registerEnablePasskey">
+              <input id="registerEnablePasskey" type="checkbox" checked />
+              <span>Enable Windows Hello on this device after account setup</span>
+            </label>
             <button class="button button--primary auth-submit" type="submit" id="registerSubmitBtn">Create Account</button>
           </form>
 
@@ -100,6 +104,8 @@
               <input id="loginRememberMe" type="checkbox" />
               <span>Keep me signed in for 30 days</span>
             </label>
+            <button class="button auth-passkey-btn" type="button" id="passkeyLoginBtn">Sign in with Windows Hello</button>
+            <p id="passkeyHint" class="auth-passkey-hint">Use fingerprint, face, or PIN on this device.</p>
             <button class="button button--primary auth-submit" type="submit" id="loginSubmitBtn">Login</button>
             <button id="resendVerificationBtn" class="auth-link-btn auth-link-btn--left auth-form__helper auth-form__helper--hidden" type="button">
               Resend verification email

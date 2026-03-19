@@ -38,6 +38,8 @@ const loginPassword = document.getElementById("loginPassword");
 const loginPasswordToggle = document.getElementById("loginPasswordToggle");
 const loginRememberMe = document.getElementById("loginRememberMe");
 const loginSubmitBtn = document.getElementById("loginSubmitBtn");
+const passkeyLoginBtn = document.getElementById("passkeyLoginBtn");
+const passkeyHint = document.getElementById("passkeyHint");
 
 // Register form fields
 const registerFirstName = document.getElementById("registerFirstName");
@@ -46,6 +48,7 @@ const registerEmail = document.getElementById("registerEmail");
 const registerPassword = document.getElementById("registerPassword");
 const registerPasswordToggle = document.getElementById("registerPasswordToggle");
 const registerTerms = document.getElementById("registerTerms");
+const registerEnablePasskey = document.getElementById("registerEnablePasskey");
 const registerSubmitBtn = document.getElementById("registerSubmitBtn");
 
 // MFA form fields
@@ -53,6 +56,125 @@ const mfaSubmitBtn = document.getElementById("mfaSubmitBtn");
 
 let pendingMfa = null;
 let isSubmitting = false;
+
+function base64UrlToArrayBuffer(base64url) {
+  const base64 = base64url.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
+function arrayBufferToBase64Url(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function toPublicKeyCreationOptions(optionsJSON) {
+  return {
+    ...optionsJSON,
+    challenge: base64UrlToArrayBuffer(optionsJSON.challenge),
+    user: {
+      ...optionsJSON.user,
+      id: base64UrlToArrayBuffer(optionsJSON.user.id),
+    },
+    excludeCredentials: (optionsJSON.excludeCredentials ?? []).map((credential) => ({
+      ...credential,
+      id: base64UrlToArrayBuffer(credential.id),
+    })),
+  };
+}
+
+function toPublicKeyRequestOptions(optionsJSON) {
+  return {
+    ...optionsJSON,
+    challenge: base64UrlToArrayBuffer(optionsJSON.challenge),
+    allowCredentials: (optionsJSON.allowCredentials ?? []).map((credential) => ({
+      ...credential,
+      id: base64UrlToArrayBuffer(credential.id),
+    })),
+  };
+}
+
+function serializeAttestationCredential(credential) {
+  return {
+    id: credential.id,
+    rawId: arrayBufferToBase64Url(credential.rawId),
+    type: credential.type,
+    response: {
+      clientDataJSON: arrayBufferToBase64Url(credential.response.clientDataJSON),
+      attestationObject: arrayBufferToBase64Url(credential.response.attestationObject),
+      transports: credential.response.getTransports ? credential.response.getTransports() : [],
+    },
+    clientExtensionResults: credential.getClientExtensionResults?.() ?? {},
+    authenticatorAttachment: credential.authenticatorAttachment ?? null,
+  };
+}
+
+function serializeAssertionCredential(credential) {
+  return {
+    id: credential.id,
+    rawId: arrayBufferToBase64Url(credential.rawId),
+    type: credential.type,
+    response: {
+      clientDataJSON: arrayBufferToBase64Url(credential.response.clientDataJSON),
+      authenticatorData: arrayBufferToBase64Url(credential.response.authenticatorData),
+      signature: arrayBufferToBase64Url(credential.response.signature),
+      userHandle: credential.response.userHandle ? arrayBufferToBase64Url(credential.response.userHandle) : null,
+    },
+    clientExtensionResults: credential.getClientExtensionResults?.() ?? {},
+    authenticatorAttachment: credential.authenticatorAttachment ?? null,
+  };
+}
+
+async function isWindowsHelloAvailable() {
+  if (!(window.PublicKeyCredential && navigator.credentials)) {
+    return false;
+  }
+
+  if (typeof PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable !== "function") {
+    return false;
+  }
+
+  try {
+    return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+  } catch {
+    return false;
+  }
+}
+
+async function tryEnrollWindowsHello() {
+  const api = getMemoraApi();
+  if (!api) {
+    return { ok: false, reason: "Desktop bridge unavailable." };
+  }
+
+  const begin = await api.passkeyBeginRegistration();
+  if (!begin.ok) {
+    return begin;
+  }
+
+  const publicKey = toPublicKeyCreationOptions(begin.options);
+  const credential = await navigator.credentials.create({ publicKey });
+  if (!credential) {
+    return { ok: false, reason: "Windows Hello enrollment was cancelled." };
+  }
+
+  const finish = await api.passkeyFinishRegistration({
+    challenge: String(begin.options.challenge),
+    response: serializeAttestationCredential(credential),
+  });
+
+  return finish;
+}
 
 function openLegalModal(modal) {
   if (!modal) {
@@ -237,6 +359,77 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+isWindowsHelloAvailable().then((available) => {
+  if (!available) {
+    if (passkeyLoginBtn) {
+      passkeyLoginBtn.disabled = true;
+    }
+    if (registerEnablePasskey) {
+      registerEnablePasskey.disabled = true;
+      registerEnablePasskey.checked = false;
+    }
+    if (passkeyHint) {
+      passkeyHint.textContent = "Windows Hello is not available on this device or browser context.";
+    }
+  }
+});
+
+passkeyLoginBtn?.addEventListener("click", async () => {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
+  const email = (loginEmail?.value ?? "").trim();
+  if (!isValidEmail(email)) {
+    showFieldError(loginEmail, "Enter your account email first");
+    return;
+  }
+
+  clearFieldError(loginEmail);
+  clearFieldError(loginPassword);
+  setStatus("Waiting for Windows Hello...");
+
+  try {
+    const begin = await api.passkeyBeginLogin({ email });
+    if (!begin.ok) {
+      setStatus(begin.reason);
+      return;
+    }
+
+    const credential = await navigator.credentials.get({
+      publicKey: toPublicKeyRequestOptions(begin.options),
+    });
+
+    if (!credential) {
+      setStatus("Windows Hello sign-in was cancelled.");
+      return;
+    }
+
+    const finish = await api.passkeyFinishLogin({
+      email,
+      challenge: String(begin.options.challenge),
+      response: serializeAssertionCredential(credential),
+    });
+
+    if (!finish.ok) {
+      setStatus(finish.reason || "Windows Hello sign-in failed.");
+      return;
+    }
+
+    if (loginRememberMe?.checked) {
+      RememberMe.save(email, finish.user);
+    }
+
+    setStatus(`Welcome back, ${finish.user.displayName}.`);
+    setTimeout(() => {
+      window.location.href = "./index.html";
+    }, 300);
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : "Windows Hello sign-in failed.");
+  }
+});
+
 loginForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
 
@@ -417,6 +610,14 @@ registerForm?.addEventListener("submit", async (event) => {
       setResendVisibility(true);
       setStatus("Account created. Check your email to verify, then sign in.");
       return;
+    }
+
+    if (registerEnablePasskey?.checked) {
+      setStatus("Account created. Setting up Windows Hello...");
+      const enrollment = await tryEnrollWindowsHello();
+      if (!enrollment.ok) {
+        setStatus(`Account created. Windows Hello setup skipped: ${enrollment.reason}`);
+      }
     }
 
     setStatus(`Account created. Welcome, ${result.user.displayName}.`);

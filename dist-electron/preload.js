@@ -9,6 +9,18 @@ const api = {
     loginUser: async (payload) => {
         return ipcRenderer.invoke("auth:login", payload);
     },
+    passkeyBeginRegistration: async () => {
+        return ipcRenderer.invoke("auth:passkeyBeginRegistration");
+    },
+    passkeyFinishRegistration: async (payload) => {
+        return ipcRenderer.invoke("auth:passkeyFinishRegistration", payload);
+    },
+    passkeyBeginLogin: async (payload) => {
+        return ipcRenderer.invoke("auth:passkeyBeginLogin", payload);
+    },
+    passkeyFinishLogin: async (payload) => {
+        return ipcRenderer.invoke("auth:passkeyFinishLogin", payload);
+    },
     verifyMfaLogin: async (payload) => {
         return ipcRenderer.invoke("auth:verifyMfa", payload);
     },

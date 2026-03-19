@@ -74,7 +74,7 @@ export async function ensureAppServer(appDir) {
         });
     });
     activeServer = {
-        origin: `http://127.0.0.1:${listenResult.port}`,
+        origin: `http://localhost:${listenResult.port}`,
         stop: async () => {
             await new Promise((resolve, reject) => {
                 listenResult.server.close((error) => {
