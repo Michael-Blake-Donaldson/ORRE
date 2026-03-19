@@ -21,6 +21,24 @@ type SupabaseMfaVerifyResult =
   | { ok: false; reason: "email-not-confirmed" }
   | { ok: false; reason: string };
 
+type SupabaseMfaStatusResult =
+  | {
+      ok: true;
+      enabled: boolean;
+      factors: Array<{ id: string; status: string; friendlyName: string | null }>;
+    }
+  | { ok: false; reason: string };
+
+type SupabaseMfaEnrollResult =
+  | {
+      ok: true;
+      factorId: string;
+      qrCodeSvg: string | null;
+      secret: string | null;
+      uri: string | null;
+    }
+  | { ok: false; reason: string };
+
 let supabaseClient: SupabaseClient | null = null;
 
 function getConfiguredUrl() {
@@ -228,4 +246,92 @@ export async function logoutFromSupabase() {
   }
 
   await client.auth.signOut();
+}
+
+export async function getSupabaseMfaStatus(): Promise<SupabaseMfaStatusResult> {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { ok: false, reason: "Supabase is not configured." };
+  }
+
+  const response = await client.auth.mfa.listFactors();
+  if (response.error) {
+    return { ok: false, reason: response.error.message };
+  }
+
+  const allFactors = response.data.all ?? [];
+  const factors = allFactors.map((factor) => ({
+    id: factor.id,
+    status: factor.status,
+    friendlyName: factor.friendly_name ?? null,
+  }));
+
+  const enabled = allFactors.some((factor) => factor.factor_type === "totp" && factor.status === "verified");
+  return {
+    ok: true,
+    enabled,
+    factors,
+  };
+}
+
+export async function beginSupabaseTotpEnrollment(displayName?: string): Promise<SupabaseMfaEnrollResult> {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { ok: false, reason: "Supabase is not configured." };
+  }
+
+  const response = await client.auth.mfa.enroll({
+    factorType: "totp",
+    friendlyName: displayName?.trim() || "Memora Authenticator",
+  });
+
+  if (response.error || !response.data) {
+    return { ok: false, reason: response.error?.message ?? "Could not start MFA enrollment." };
+  }
+
+  return {
+    ok: true,
+    factorId: response.data.id,
+    qrCodeSvg: response.data.totp.qr_code ?? null,
+    secret: response.data.totp.secret ?? null,
+    uri: response.data.totp.uri ?? null,
+  };
+}
+
+export async function verifySupabaseTotpEnrollment(factorId: string, code: string) {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { ok: false as const, reason: "Supabase is not configured." };
+  }
+
+  const challengeResponse = await client.auth.mfa.challenge({ factorId });
+  if (challengeResponse.error || !challengeResponse.data?.id) {
+    return { ok: false as const, reason: challengeResponse.error?.message ?? "Could not create enrollment challenge." };
+  }
+
+  const verifyResponse = await client.auth.mfa.verify({
+    factorId,
+    challengeId: challengeResponse.data.id,
+    code,
+  });
+
+  if (verifyResponse.error) {
+    return { ok: false as const, reason: verifyResponse.error.message };
+  }
+
+  return { ok: true as const };
+}
+
+export async function disableSupabaseMfaFactor(factorId: string) {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { ok: false as const, reason: "Supabase is not configured." };
+  }
+
+  const response = await client.auth.mfa.unenroll({ factorId });
+  if (response.error) {
+    return { ok: false as const, reason: response.error.message };
+  }
+
+  return { ok: true as const };
 }

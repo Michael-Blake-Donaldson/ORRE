@@ -124,6 +124,29 @@ const api = {
   resendVerificationEmail: async (payload: { email: string }) => {
     return ipcRenderer.invoke("auth:resendVerification", payload) as Promise<{ ok: true } | { ok: false; reason: string }>;
   },
+  getMfaStatus: async () => {
+    return ipcRenderer.invoke("auth:getMfaStatus") as Promise<
+      | {
+          ok: true;
+          configured: boolean;
+          enabled: boolean;
+          factors: Array<{ id: string; status: string; friendlyName: string | null }>;
+        }
+      | { ok: false; reason: string }
+    >;
+  },
+  beginMfaEnrollment: async (payload: { displayName?: string }) => {
+    return ipcRenderer.invoke("auth:beginMfaEnrollment", payload) as Promise<
+      | { ok: true; factorId: string; qrCodeSvg: string | null; secret: string | null; uri: string | null }
+      | { ok: false; reason: string }
+    >;
+  },
+  verifyMfaEnrollment: async (payload: { factorId: string; code: string }) => {
+    return ipcRenderer.invoke("auth:verifyMfaEnrollment", payload) as Promise<{ ok: true } | { ok: false; reason: string }>;
+  },
+  disableMfa: async (payload: { factorId: string }) => {
+    return ipcRenderer.invoke("auth:disableMfa", payload) as Promise<{ ok: true } | { ok: false; reason: string }>;
+  },
   logoutUser: async () => {
     return ipcRenderer.invoke("auth:logout") as Promise<{ ok: true }>;
   },

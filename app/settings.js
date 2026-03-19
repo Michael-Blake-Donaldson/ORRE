@@ -14,6 +14,15 @@ const diagBridgeLoaded = document.getElementById("diagBridgeLoaded");
 const diagSourceCount = document.getElementById("diagSourceCount");
 const diagSelectedSource = document.getElementById("diagSelectedSource");
 const diagLastError = document.getElementById("diagLastError");
+const mfaStateLabel = document.getElementById("mfaStateLabel");
+const mfaStartBtn = document.getElementById("mfaStartBtn");
+const mfaDisableBtn = document.getElementById("mfaDisableBtn");
+const mfaEnrollPanel = document.getElementById("mfaEnrollPanel");
+const mfaQrContainer = document.getElementById("mfaQrContainer");
+const mfaCodeInput = document.getElementById("mfaCodeInput");
+const mfaVerifyBtn = document.getElementById("mfaVerifyBtn");
+const mfaCancelBtn = document.getElementById("mfaCancelBtn");
+const mfaStatusText = document.getElementById("mfaStatusText");
 
 const DEFAULT_SETTINGS = {
   defaultMode: "session",
@@ -32,6 +41,169 @@ const diagnostics = {
   selectedSource: "none",
   lastCaptureError: "none",
 };
+
+const mfaState = {
+  configured: false,
+  enabled: false,
+  factors: [],
+  pendingFactorId: null,
+};
+
+function setMfaStatus(text) {
+  if (mfaStatusText) {
+    mfaStatusText.textContent = text;
+  }
+}
+
+function renderMfaShell() {
+  if (mfaStateLabel) {
+    if (!mfaState.configured) {
+      mfaStateLabel.textContent = "Supabase auth not configured";
+    } else {
+      mfaStateLabel.textContent = mfaState.enabled ? "Enabled" : "Disabled";
+    }
+  }
+
+  if (mfaStartBtn) {
+    mfaStartBtn.disabled = !mfaState.configured || mfaState.enabled;
+  }
+
+  if (mfaDisableBtn) {
+    mfaDisableBtn.disabled = !mfaState.enabled;
+  }
+}
+
+function resetMfaEnrollmentUI() {
+  mfaState.pendingFactorId = null;
+  mfaEnrollPanel?.classList.add("mfa-panel--hidden");
+  if (mfaCodeInput) {
+    mfaCodeInput.value = "";
+  }
+  if (mfaQrContainer) {
+    mfaQrContainer.textContent = "Start setup to generate your QR code.";
+  }
+}
+
+function renderMfaQr(value) {
+  if (!mfaQrContainer) {
+    return;
+  }
+
+  if (!value) {
+    mfaQrContainer.textContent = "QR code unavailable. Use your authenticator app with the manual setup key.";
+    return;
+  }
+
+  if (value.includes("<svg")) {
+    mfaQrContainer.innerHTML = value;
+    return;
+  }
+
+  if (value.startsWith("data:image")) {
+    mfaQrContainer.innerHTML = `<img src="${value}" alt="MFA QR code" class="mfa-qr-image" />`;
+    return;
+  }
+
+  mfaQrContainer.textContent = value;
+}
+
+async function loadMfaStatus() {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
+  const response = await api.getMfaStatus();
+  if (!response.ok) {
+    setMfaStatus(response.reason || "Could not load MFA status.");
+    return;
+  }
+
+  mfaState.configured = response.configured;
+  mfaState.enabled = response.enabled;
+  mfaState.factors = response.factors || [];
+
+  renderMfaShell();
+  if (!mfaState.configured) {
+    setMfaStatus("Supabase auth is not configured. Add SUPABASE_URL and key in .env to use MFA.");
+    return;
+  }
+
+  setMfaStatus(mfaState.enabled ? "MFA is enabled for your account." : "MFA is not enabled yet.");
+}
+
+async function startMfaEnrollment() {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
+  const response = await api.beginMfaEnrollment({
+    displayName: "Memora Authenticator",
+  });
+
+  if (!response.ok) {
+    setMfaStatus(response.reason || "Could not start MFA setup.");
+    return;
+  }
+
+  mfaState.pendingFactorId = response.factorId;
+  mfaEnrollPanel?.classList.remove("mfa-panel--hidden");
+  renderMfaQr(response.qrCodeSvg || response.uri || response.secret || null);
+  setMfaStatus("Scan the QR code and enter your authenticator code to finish setup.");
+}
+
+async function verifyMfaEnrollmentFlow() {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
+  const factorId = mfaState.pendingFactorId;
+  const code = (mfaCodeInput?.value ?? "").trim();
+  if (!factorId) {
+    setMfaStatus("Start MFA setup first.");
+    return;
+  }
+
+  if (code.length < 6) {
+    setMfaStatus("Enter the code from your authenticator app.");
+    return;
+  }
+
+  const response = await api.verifyMfaEnrollment({ factorId, code });
+  if (!response.ok) {
+    setMfaStatus(response.reason || "MFA verification failed.");
+    return;
+  }
+
+  resetMfaEnrollmentUI();
+  await loadMfaStatus();
+  setMfaStatus("MFA enabled successfully.");
+}
+
+async function disableMfaFlow() {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
+  const verifiedFactor = (mfaState.factors || []).find((factor) => factor.status === "verified") || null;
+  if (!verifiedFactor) {
+    setMfaStatus("No verified MFA factor found.");
+    return;
+  }
+
+  const response = await api.disableMfa({ factorId: verifiedFactor.id });
+  if (!response.ok) {
+    setMfaStatus(response.reason || "Could not disable MFA.");
+    return;
+  }
+
+  resetMfaEnrollmentUI();
+  await loadMfaStatus();
+  setMfaStatus("MFA disabled.");
+}
 
 function refreshDiagnosticsUI() {
   if (diagBridgeLoaded) {
@@ -351,6 +523,23 @@ grantMicBtn?.addEventListener("click", async () => {
   setStatus("Microphone access not granted. Screen recording still works without mic.");
 });
 
+mfaStartBtn?.addEventListener("click", async () => {
+  await startMfaEnrollment();
+});
+
+mfaVerifyBtn?.addEventListener("click", async () => {
+  await verifyMfaEnrollmentFlow();
+});
+
+mfaDisableBtn?.addEventListener("click", async () => {
+  await disableMfaFlow();
+});
+
+mfaCancelBtn?.addEventListener("click", () => {
+  resetMfaEnrollmentUI();
+  setMfaStatus("MFA setup canceled.");
+});
+
 setupNavigation();
 setupBackToTop();
 refreshPermissionUI();
@@ -363,6 +552,11 @@ ensureAuthenticated()
 
     loadSettings().catch((error) => {
       setStatus("Could not load settings.");
+      console.error(error);
+    });
+
+    loadMfaStatus().catch((error) => {
+      setMfaStatus("Could not load MFA status.");
       console.error(error);
     });
 

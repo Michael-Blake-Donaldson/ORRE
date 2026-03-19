@@ -9,7 +9,7 @@ import { createDb } from "./db.js";
 import { ProcessingQueue } from "./processing.js";
 import { buildAskMemoraAnswer } from "./qa.js";
 import { buildSessionSummary } from "./summary.js";
-import { isSupabaseAuthConfigured, loginWithSupabase, logoutFromSupabase, registerWithSupabase, resendSupabaseVerification, verifySupabaseMfaCode, } from "./supabase.js";
+import { beginSupabaseTotpEnrollment, disableSupabaseMfaFactor, getSupabaseMfaStatus, isSupabaseAuthConfigured, loginWithSupabase, logoutFromSupabase, registerWithSupabase, resendSupabaseVerification, verifySupabaseTotpEnrollment, verifySupabaseMfaCode, } from "./supabase.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 let mainWindow = null;
@@ -363,6 +363,73 @@ ipcMain.handle("auth:resendVerification", async (_event, payload) => {
         return { ok: false, reason: "Email verification resend is available when Supabase is configured." };
     }
     const result = await resendSupabaseVerification(email);
+    if (!result.ok) {
+        return { ok: false, reason: result.reason };
+    }
+    return { ok: true };
+});
+ipcMain.handle("auth:getMfaStatus", async () => {
+    if (!isSupabaseAuthConfigured()) {
+        return { ok: true, configured: false, enabled: false, factors: [] };
+    }
+    const userId = getActiveUserId();
+    if (!userId) {
+        return { ok: false, reason: "Sign in to manage multi-factor authentication." };
+    }
+    const status = await getSupabaseMfaStatus();
+    if (!status.ok) {
+        return { ok: false, reason: status.reason };
+    }
+    return {
+        ok: true,
+        configured: true,
+        enabled: status.enabled,
+        factors: status.factors,
+    };
+});
+ipcMain.handle("auth:beginMfaEnrollment", async (_event, payload) => {
+    if (!isSupabaseAuthConfigured()) {
+        return { ok: false, reason: "Supabase is not configured." };
+    }
+    const userId = getActiveUserId();
+    if (!userId) {
+        return { ok: false, reason: "Sign in to enroll MFA." };
+    }
+    const result = await beginSupabaseTotpEnrollment(payload.displayName);
+    if (!result.ok) {
+        return { ok: false, reason: result.reason };
+    }
+    return {
+        ok: true,
+        factorId: result.factorId,
+        qrCodeSvg: result.qrCodeSvg,
+        secret: result.secret,
+        uri: result.uri,
+    };
+});
+ipcMain.handle("auth:verifyMfaEnrollment", async (_event, payload) => {
+    if (!isSupabaseAuthConfigured()) {
+        return { ok: false, reason: "Supabase is not configured." };
+    }
+    const userId = getActiveUserId();
+    if (!userId) {
+        return { ok: false, reason: "Sign in to verify MFA enrollment." };
+    }
+    const result = await verifySupabaseTotpEnrollment(payload.factorId, payload.code);
+    if (!result.ok) {
+        return { ok: false, reason: result.reason };
+    }
+    return { ok: true };
+});
+ipcMain.handle("auth:disableMfa", async (_event, payload) => {
+    if (!isSupabaseAuthConfigured()) {
+        return { ok: false, reason: "Supabase is not configured." };
+    }
+    const userId = getActiveUserId();
+    if (!userId) {
+        return { ok: false, reason: "Sign in to disable MFA." };
+    }
+    const result = await disableSupabaseMfaFactor(payload.factorId);
     if (!result.ok) {
         return { ok: false, reason: result.reason };
     }

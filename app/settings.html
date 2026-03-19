@@ -96,6 +96,41 @@
           </article>
 
           <article class="panel panel--wide">
+            <h2>Account Security</h2>
+            <p class="status">Enable multi-factor authentication (TOTP) for stronger account protection.</p>
+
+            <div class="mfa-shell">
+              <div class="mfa-row">
+                <div>MFA Status: <span id="mfaStateLabel">Checking...</span></div>
+                <button id="mfaStartBtn" class="button button--mini" type="button">Set Up MFA</button>
+              </div>
+
+              <div id="mfaEnrollPanel" class="mfa-panel mfa-panel--hidden">
+                <div class="field-row">
+                  <label>Authenticator QR Code</label>
+                  <div id="mfaQrContainer" class="mfa-qr-shell">Start setup to generate your QR code.</div>
+                </div>
+
+                <div class="field-row">
+                  <label for="mfaCodeInput">Verification Code</label>
+                  <input id="mfaCodeInput" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="Enter code from authenticator app" />
+                </div>
+
+                <div class="button-row button-row--compact">
+                  <button id="mfaVerifyBtn" class="button button--mini" type="button">Verify & Enable</button>
+                  <button id="mfaCancelBtn" class="button button--mini" type="button">Cancel</button>
+                </div>
+              </div>
+
+              <div class="button-row button-row--compact">
+                <button id="mfaDisableBtn" class="button button--mini" type="button" disabled>Disable MFA</button>
+              </div>
+
+              <p id="mfaStatusText" class="status">MFA not configured yet.</p>
+            </div>
+          </article>
+
+          <article class="panel panel--wide">
             <h2>Quick Start</h2>
             <div class="checklist">
               <label><input type="checkbox" checked disabled /> Pick a capture source and start recording</label>

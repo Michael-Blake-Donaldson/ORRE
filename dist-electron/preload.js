@@ -15,6 +15,18 @@ const api = {
     resendVerificationEmail: async (payload) => {
         return ipcRenderer.invoke("auth:resendVerification", payload);
     },
+    getMfaStatus: async () => {
+        return ipcRenderer.invoke("auth:getMfaStatus");
+    },
+    beginMfaEnrollment: async (payload) => {
+        return ipcRenderer.invoke("auth:beginMfaEnrollment", payload);
+    },
+    verifyMfaEnrollment: async (payload) => {
+        return ipcRenderer.invoke("auth:verifyMfaEnrollment", payload);
+    },
+    disableMfa: async (payload) => {
+        return ipcRenderer.invoke("auth:disableMfa", payload);
+    },
     logoutUser: async () => {
         return ipcRenderer.invoke("auth:logout");
     },

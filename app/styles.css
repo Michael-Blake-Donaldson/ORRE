@@ -706,6 +706,50 @@ select:focus-visible,
   grid-column: 1 / -1;
 }
 
+.mfa-shell {
+  margin-top: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.mfa-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-muted);
+}
+
+.mfa-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: rgba(255, 255, 255, 0.015);
+  padding: 12px;
+}
+
+.mfa-panel--hidden {
+  display: none;
+}
+
+.mfa-qr-shell {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-control);
+  min-height: 150px;
+  display: grid;
+  place-items: center;
+  padding: 10px;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.015);
+  overflow: auto;
+}
+
+.mfa-qr-shell svg,
+.mfa-qr-image {
+  width: 160px;
+  height: 160px;
+  display: block;
+}
+
 .citation-meta {
   color: #78dfff;
   font-size: 12px;
