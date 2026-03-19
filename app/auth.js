@@ -23,6 +23,10 @@ const mfaForm = document.getElementById("mfaForm");
 const mfaCode = document.getElementById("mfaCode");
 const mfaBackBtn = document.getElementById("mfaBackBtn");
 const resendVerificationBtn = document.getElementById("resendVerificationBtn");
+const termsModal = document.getElementById("termsModal");
+const termsOpenBtn = document.getElementById("termsOpenBtn");
+const termsCloseBtn = document.getElementById("termsCloseBtn");
+const termsBackdrop = document.getElementById("termsBackdrop");
 
 // Login form fields
 const loginEmail = document.getElementById("loginEmail");
@@ -45,6 +49,26 @@ const mfaSubmitBtn = document.getElementById("mfaSubmitBtn");
 
 let pendingMfa = null;
 let isSubmitting = false;
+
+function openTermsModal() {
+  if (!termsModal) {
+    return;
+  }
+
+  termsModal.classList.remove("legal-modal--hidden");
+  termsModal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("modal-open");
+}
+
+function closeTermsModal() {
+  if (!termsModal) {
+    return;
+  }
+
+  termsModal.classList.add("legal-modal--hidden");
+  termsModal.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("modal-open");
+}
 
 function setResendVisibility(visible) {
   resendVerificationBtn?.classList.toggle("auth-form__helper--hidden", !visible);
@@ -172,6 +196,24 @@ registerPassword?.addEventListener("blur", (e) => {
     showFieldError(e.target, "Password must be at least 8 characters");
   } else {
     clearFieldError(e.target);
+  }
+});
+
+termsOpenBtn?.addEventListener("click", () => {
+  openTermsModal();
+});
+
+termsCloseBtn?.addEventListener("click", () => {
+  closeTermsModal();
+});
+
+termsBackdrop?.addEventListener("click", () => {
+  closeTermsModal();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closeTermsModal();
   }
 });
 

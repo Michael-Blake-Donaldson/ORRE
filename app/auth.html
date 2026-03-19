@@ -67,10 +67,13 @@
               <span class="auth-strength-text" id="registerPasswordStrengthText"></span>
               <span class="auth-error" id="registerPasswordError"></span>
             </div>
-            <label class="auth-checkbox">
-              <input id="registerTerms" type="checkbox" required />
-              <span>I agree to the Terms and Conditions</span>
-            </label>
+            <div class="auth-legal-row">
+              <label class="auth-checkbox" for="registerTerms">
+                <input id="registerTerms" type="checkbox" required />
+                <span>I agree to the</span>
+              </label>
+              <button id="termsOpenBtn" class="auth-legal-link" type="button">Terms and Conditions</button>
+            </div>
             <button class="button button--primary auth-submit" type="submit" id="registerSubmitBtn">Create Account</button>
           </form>
 
@@ -114,6 +117,92 @@
         </section>
       </section>
     </main>
+
+    <div id="termsModal" class="legal-modal legal-modal--hidden" aria-hidden="true">
+      <div id="termsBackdrop" class="legal-modal__backdrop"></div>
+      <section class="legal-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="termsTitle">
+        <div class="legal-modal__header">
+          <div>
+            <p class="legal-modal__eyebrow">Memora Legal</p>
+            <h2 id="termsTitle" class="legal-modal__title">Terms and Conditions</h2>
+          </div>
+          <button id="termsCloseBtn" class="legal-modal__close" type="button" aria-label="Close terms and conditions">Close</button>
+        </div>
+
+        <div class="legal-modal__body">
+          <p>
+            These Terms and Conditions govern your use of Memora, including the desktop application, cloud synchronization,
+            and related services. By creating an account or using Memora, you agree to these terms.
+          </p>
+
+          <section class="legal-modal__section">
+            <h3>1. Eligibility and Account Use</h3>
+            <p>
+              You must provide accurate information when registering, keep your credentials confidential, and use the account
+              only for lawful personal or authorized business purposes. You are responsible for activity that occurs under your account.
+            </p>
+          </section>
+
+          <section class="legal-modal__section">
+            <h3>2. Your Content and Privacy</h3>
+            <p>
+              Memora may store recordings, transcripts, screenshots, summaries, prompts, preferences, and related metadata that you choose
+              to create or sync. You retain ownership of your content. You confirm that you have the rights and permissions required to capture,
+              upload, and process that content.
+            </p>
+          </section>
+
+          <section class="legal-modal__section">
+            <h3>3. Acceptable Use</h3>
+            <p>
+              You may not use Memora to violate law, infringe privacy rights, capture restricted information without permission, interfere with
+              the service, attempt unauthorized access, or overload the platform through abusive automation or malicious traffic.
+            </p>
+          </section>
+
+          <section class="legal-modal__section">
+            <h3>4. Security</h3>
+            <p>
+              You agree to maintain a strong password, enable multi-factor authentication where offered, and promptly notify us if you suspect
+              unauthorized access. We may suspend access when necessary to protect users, data, or system integrity.
+            </p>
+          </section>
+
+          <section class="legal-modal__section">
+            <h3>5. Service Availability</h3>
+            <p>
+              We may modify, improve, suspend, or discontinue features at any time. While we aim for reliable access, Memora is provided on an
+              as-available basis and may occasionally be unavailable for maintenance, updates, or third-party outages.
+            </p>
+          </section>
+
+          <section class="legal-modal__section">
+            <h3>6. Data Loss and Backups</h3>
+            <p>
+              You are responsible for maintaining any backups you require. We are not responsible for losses caused by device failure, accidental
+              deletion, third-party downtime, or misuse of the application.
+            </p>
+          </section>
+
+          <section class="legal-modal__section">
+            <h3>7. Termination</h3>
+            <p>
+              You may stop using Memora at any time. We may restrict or terminate access if you violate these terms, create security risk,
+              or misuse the service in a way that harms other users or the platform.
+            </p>
+          </section>
+
+          <section class="legal-modal__section">
+            <h3>8. Changes to These Terms</h3>
+            <p>
+              We may update these Terms and Conditions from time to time. Continued use of Memora after an update means you accept the revised terms.
+            </p>
+          </section>
+
+          <p class="legal-modal__footnote">Last updated: March 18, 2026</p>
+        </div>
+      </section>
+    </div>
 
     <script type="module" src="./auth.js"></script>
   </body>
