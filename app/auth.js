@@ -60,7 +60,7 @@ let pendingMfa = null;
 let isSubmitting = false;
 
 function startAuthEntrance() {
-  const minimumLoadMs = 640;
+  const minimumLoadMs = 920;
 
   setTimeout(() => {
     authPreloader?.classList.add("auth-preloader--hidden");
