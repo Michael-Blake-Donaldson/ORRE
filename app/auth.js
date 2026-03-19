@@ -53,9 +53,26 @@ const registerSubmitBtn = document.getElementById("registerSubmitBtn");
 
 // MFA form fields
 const mfaSubmitBtn = document.getElementById("mfaSubmitBtn");
+const authShell = document.getElementById("authShell");
+const authPreloader = document.getElementById("authPreloader");
 
 let pendingMfa = null;
 let isSubmitting = false;
+
+function startAuthEntrance() {
+  const minimumLoadMs = 640;
+
+  setTimeout(() => {
+    authPreloader?.classList.add("auth-preloader--hidden");
+    authShell?.classList.remove("auth-shell--hidden");
+    authShell?.classList.add("auth-shell--ready");
+    document.body.classList.remove("auth-preload");
+
+    setTimeout(() => {
+      authPreloader?.remove();
+    }, 420);
+  }, minimumLoadMs);
+}
 
 function base64UrlToArrayBuffer(base64url) {
   const base64 = base64url.replace(/-/g, "+").replace(/_/g, "/");
@@ -727,6 +744,7 @@ switchInlineBtn?.addEventListener("click", () => {
 });
 
 setMode("login");
+startAuthEntrance();
 checkExistingSession().catch((error) => {
   setStatus("Could not check session.");
   console.error(error);

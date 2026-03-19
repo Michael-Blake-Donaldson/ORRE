@@ -8,8 +8,18 @@
     <link rel="icon" type="image/png" href="./assets/memora-logo.png" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body>
-    <main class="auth-shell">
+  <body class="auth-preload">
+    <div id="authPreloader" class="auth-preloader" aria-hidden="true">
+      <div class="auth-preloader__inner">
+        <img class="auth-preloader__logo" src="./assets/memora-logo.png" alt="Memora logo" />
+        <p class="auth-preloader__text">Preparing your workspace...</p>
+        <div class="auth-preloader__track">
+          <span class="auth-preloader__bar"></span>
+        </div>
+      </div>
+    </div>
+
+    <main id="authShell" class="auth-shell auth-shell--hidden">
       <section class="auth-card auth-card--split">
         <aside class="auth-visual">
           <div class="auth-visual__chrome">
