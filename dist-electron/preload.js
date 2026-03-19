@@ -27,6 +27,9 @@ const api = {
     resendVerificationEmail: async (payload) => {
         return ipcRenderer.invoke("auth:resendVerification", payload);
     },
+    requestPasswordReset: async (payload) => {
+        return ipcRenderer.invoke("auth:forgotPassword", payload);
+    },
     getMfaStatus: async () => {
         return ipcRenderer.invoke("auth:getMfaStatus");
     },
@@ -41,6 +44,9 @@ const api = {
     },
     logoutUser: async () => {
         return ipcRenderer.invoke("auth:logout");
+    },
+    logoutAllDevices: async () => {
+        return ipcRenderer.invoke("auth:logoutAllDevices");
     },
     getRecordingState: async () => {
         return ipcRenderer.invoke("recording:getState");

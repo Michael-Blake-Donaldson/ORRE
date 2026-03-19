@@ -1522,6 +1522,11 @@ ul {
   color: #faf8ff;
 }
 
+.auth-status--compact {
+  margin: 2px 0;
+  min-height: 18px;
+}
+
 .auth-submit:hover {
   border-color: rgba(144, 228, 255, 0.8);
   box-shadow: 0 0 0 1px rgba(116, 212, 255, 0.22), 0 0 20px rgba(45, 169, 255, 0.45);
@@ -1737,6 +1742,10 @@ body.modal-open {
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
 }
 
+.legal-modal__dialog--compact {
+  width: min(520px, 100%);
+}
+
 .legal-modal__header {
   display: flex;
   justify-content: space-between;
@@ -1780,6 +1789,11 @@ body.modal-open {
   padding: 22px 24px 28px;
   color: #c7d9ea;
   line-height: 1.65;
+}
+
+.legal-modal__body--form {
+  display: grid;
+  gap: 12px;
 }
 
 .legal-modal__body p {

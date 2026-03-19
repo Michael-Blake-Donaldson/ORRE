@@ -23,6 +23,8 @@ const mfaCodeInput = document.getElementById("mfaCodeInput");
 const mfaVerifyBtn = document.getElementById("mfaVerifyBtn");
 const mfaCancelBtn = document.getElementById("mfaCancelBtn");
 const mfaStatusText = document.getElementById("mfaStatusText");
+const revokeSessionsBtn = document.getElementById("revokeSessionsBtn");
+const revokeSessionsStatus = document.getElementById("revokeSessionsStatus");
 
 const DEFAULT_SETTINGS = {
   defaultMode: "session",
@@ -55,6 +57,12 @@ function setMfaStatus(text) {
   }
 }
 
+function setRevokeSessionsStatus(text) {
+  if (revokeSessionsStatus) {
+    revokeSessionsStatus.textContent = text;
+  }
+}
+
 function renderMfaShell() {
   if (mfaStateLabel) {
     if (!mfaState.configured) {
@@ -70,6 +78,10 @@ function renderMfaShell() {
 
   if (mfaDisableBtn) {
     mfaDisableBtn.disabled = !mfaState.enabled;
+  }
+
+  if (revokeSessionsBtn) {
+    revokeSessionsBtn.disabled = !mfaState.configured;
   }
 }
 
@@ -126,10 +138,41 @@ async function loadMfaStatus() {
   renderMfaShell();
   if (!mfaState.configured) {
     setMfaStatus("Supabase auth is not configured. Add SUPABASE_URL and key in .env to use MFA.");
+    setRevokeSessionsStatus("Global session revoke is available with cloud authentication.");
     return;
   }
 
   setMfaStatus(mfaState.enabled ? "MFA is enabled for your account." : "MFA is not enabled yet.");
+  setRevokeSessionsStatus("Use this if your account was accessed on a device you no longer trust.");
+}
+
+async function revokeAllSessionsFlow() {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
+  const confirmed = window.confirm("Sign out all active devices and sessions for this account?");
+  if (!confirmed) {
+    return;
+  }
+
+  if (revokeSessionsBtn) {
+    revokeSessionsBtn.disabled = true;
+  }
+  setRevokeSessionsStatus("Revoking active sessions...");
+
+  const response = await api.logoutAllDevices();
+  if (!response.ok) {
+    setRevokeSessionsStatus(response.reason || "Could not revoke active sessions.");
+    renderMfaShell();
+    return;
+  }
+
+  setRevokeSessionsStatus("All sessions revoked. Redirecting to sign in...");
+  setTimeout(() => {
+    window.location.href = "./auth.html";
+  }, 350);
 }
 
 async function startMfaEnrollment() {
@@ -538,6 +581,10 @@ mfaDisableBtn?.addEventListener("click", async () => {
 mfaCancelBtn?.addEventListener("click", () => {
   resetMfaEnrollmentUI();
   setMfaStatus("MFA setup canceled.");
+});
+
+revokeSessionsBtn?.addEventListener("click", async () => {
+  await revokeAllSessionsFlow();
 });
 
 setupNavigation();

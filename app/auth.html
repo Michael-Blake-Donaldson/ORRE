@@ -118,6 +118,9 @@
             <button class="button auth-passkey-btn" type="button" id="passkeyLoginBtn">Sign in with Windows Hello</button>
             <p id="passkeyHint" class="auth-passkey-hint">Use fingerprint, face, or PIN on this device.</p>
             <button class="button button--primary auth-submit" type="submit" id="loginSubmitBtn">Login</button>
+            <button id="forgotPasswordBtn" class="auth-link-btn auth-link-btn--left auth-form__helper" type="button">
+              Forgot password?
+            </button>
             <button id="resendVerificationBtn" class="auth-link-btn auth-link-btn--left auth-form__helper auth-form__helper--hidden" type="button">
               Resend verification email
             </button>
@@ -306,6 +309,26 @@
 
           <p class="legal-modal__footnote">Version 2026-03-18.1 • Last updated: March 18, 2026</p>
         </div>
+      </section>
+    </div>
+
+    <div id="forgotModal" class="legal-modal legal-modal--hidden" aria-hidden="true">
+      <div id="forgotBackdrop" class="legal-modal__backdrop"></div>
+      <section class="legal-modal__dialog legal-modal__dialog--compact" role="dialog" aria-modal="true" aria-labelledby="forgotTitle">
+        <div class="legal-modal__header">
+          <div>
+            <p class="legal-modal__eyebrow">Account Recovery</p>
+            <h2 id="forgotTitle" class="legal-modal__title">Reset your password</h2>
+          </div>
+          <button id="forgotCloseBtn" class="legal-modal__close" type="button" aria-label="Close password reset">Close</button>
+        </div>
+
+        <form id="forgotForm" class="legal-modal__body legal-modal__body--form">
+          <p>Enter your account email and we will send password reset instructions.</p>
+          <input id="forgotEmail" type="email" autocomplete="email" placeholder="Email address" required />
+          <p id="forgotStatus" class="auth-status auth-status--compact"></p>
+          <button id="forgotSubmitBtn" class="button button--primary auth-submit" type="submit">Send reset email</button>
+        </form>
       </section>
     </div>
 

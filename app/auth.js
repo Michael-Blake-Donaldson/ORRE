@@ -31,6 +31,14 @@ const privacyModal = document.getElementById("privacyModal");
 const privacyOpenBtn = document.getElementById("privacyOpenBtn");
 const privacyCloseBtn = document.getElementById("privacyCloseBtn");
 const privacyBackdrop = document.getElementById("privacyBackdrop");
+const forgotModal = document.getElementById("forgotModal");
+const forgotPasswordBtn = document.getElementById("forgotPasswordBtn");
+const forgotCloseBtn = document.getElementById("forgotCloseBtn");
+const forgotBackdrop = document.getElementById("forgotBackdrop");
+const forgotForm = document.getElementById("forgotForm");
+const forgotEmail = document.getElementById("forgotEmail");
+const forgotStatus = document.getElementById("forgotStatus");
+const forgotSubmitBtn = document.getElementById("forgotSubmitBtn");
 
 // Login form fields
 const loginEmail = document.getElementById("loginEmail");
@@ -276,8 +284,18 @@ function closeLegalModal(modal) {
   modal.classList.add("legal-modal--hidden");
   modal.setAttribute("aria-hidden", "true");
 
-  if (termsModal?.classList.contains("legal-modal--hidden") && privacyModal?.classList.contains("legal-modal--hidden")) {
+  if (
+    termsModal?.classList.contains("legal-modal--hidden") &&
+    privacyModal?.classList.contains("legal-modal--hidden") &&
+    forgotModal?.classList.contains("legal-modal--hidden")
+  ) {
     document.body.classList.remove("modal-open");
+  }
+}
+
+function setForgotStatus(text) {
+  if (forgotStatus) {
+    forgotStatus.textContent = text;
   }
 }
 
@@ -434,10 +452,57 @@ privacyBackdrop?.addEventListener("click", () => {
   closeLegalModal(privacyModal);
 });
 
+forgotPasswordBtn?.addEventListener("click", () => {
+  if (forgotEmail && loginEmail?.value) {
+    forgotEmail.value = loginEmail.value;
+  }
+  setForgotStatus("");
+  openLegalModal(forgotModal);
+});
+
+forgotCloseBtn?.addEventListener("click", () => {
+  closeLegalModal(forgotModal);
+});
+
+forgotBackdrop?.addEventListener("click", () => {
+  closeLegalModal(forgotModal);
+});
+
+forgotForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
+  const email = (forgotEmail?.value ?? "").trim();
+  if (!isValidEmail(email)) {
+    setForgotStatus("Enter a valid email address.");
+    return;
+  }
+
+  setButtonLoading(forgotSubmitBtn, true);
+  setForgotStatus("Sending reset instructions...");
+
+  try {
+    const result = await api.requestPasswordReset({ email });
+    if (!result.ok) {
+      setForgotStatus(result.reason || "Could not send reset instructions.");
+      return;
+    }
+
+    setForgotStatus(result.message || "If an account exists, instructions have been sent.");
+  } finally {
+    setButtonLoading(forgotSubmitBtn, false);
+  }
+});
+
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     closeLegalModal(termsModal);
     closeLegalModal(privacyModal);
+    closeLegalModal(forgotModal);
   }
 });
 

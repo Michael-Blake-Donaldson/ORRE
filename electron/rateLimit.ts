@@ -142,6 +142,14 @@ export const rateLimiters = {
     keyGenerator: (email) => `resend-verify:${email.toLowerCase().trim()}`,
   }),
 
+  // Max 3 password reset requests per 1 hour per email
+  authPasswordReset: createRateLimiter({
+    maxRequests: 3,
+    windowMs: 60 * 60 * 1000, // 1 hour
+    message: "Too many password reset attempts. Please try again in 1 hour.",
+    keyGenerator: (email) => `password-reset:${email.toLowerCase().trim()}`,
+  }),
+
   // Max 10 processing operations per minute per user
   processing: createRateLimiter({
     maxRequests: 10,

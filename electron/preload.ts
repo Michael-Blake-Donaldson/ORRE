@@ -145,6 +145,12 @@ const api = {
   resendVerificationEmail: async (payload: { email: string }) => {
     return ipcRenderer.invoke("auth:resendVerification", payload) as Promise<{ ok: true } | { ok: false; reason: string }>;
   },
+  requestPasswordReset: async (payload: { email: string }) => {
+    return ipcRenderer.invoke("auth:forgotPassword", payload) as Promise<
+      | { ok: true; message: string }
+      | { ok: false; reason: string }
+    >;
+  },
   getMfaStatus: async () => {
     return ipcRenderer.invoke("auth:getMfaStatus") as Promise<
       | {
@@ -170,6 +176,12 @@ const api = {
   },
   logoutUser: async () => {
     return ipcRenderer.invoke("auth:logout") as Promise<{ ok: true }>;
+  },
+  logoutAllDevices: async () => {
+    return ipcRenderer.invoke("auth:logoutAllDevices") as Promise<
+      | { ok: true }
+      | { ok: false; reason: string }
+    >;
   },
   getRecordingState: async () => {
     return ipcRenderer.invoke("recording:getState") as Promise<{

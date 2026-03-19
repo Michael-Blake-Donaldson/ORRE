@@ -161,12 +161,23 @@ export async function resendSupabaseVerification(email) {
     }
     return { ok: true };
 }
-export async function logoutFromSupabase() {
+export async function requestSupabasePasswordReset(email, redirectTo) {
+    const client = getSupabaseClient();
+    if (!client) {
+        return { ok: false, reason: "Supabase is not configured." };
+    }
+    const response = await client.auth.resetPasswordForEmail(email, redirectTo ? { redirectTo } : undefined);
+    if (response.error) {
+        return { ok: false, reason: response.error.message };
+    }
+    return { ok: true };
+}
+export async function logoutFromSupabase(scope = "local") {
     const client = getSupabaseClient();
     if (!client) {
         return;
     }
-    await client.auth.signOut();
+    await client.auth.signOut({ scope });
 }
 export async function getSupabaseMfaStatus() {
     const client = getSupabaseClient();

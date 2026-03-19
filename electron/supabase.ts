@@ -255,13 +255,27 @@ export async function resendSupabaseVerification(email: string) {
   return { ok: true as const };
 }
 
-export async function logoutFromSupabase() {
+export async function requestSupabasePasswordReset(email: string, redirectTo?: string) {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { ok: false as const, reason: "Supabase is not configured." };
+  }
+
+  const response = await client.auth.resetPasswordForEmail(email, redirectTo ? { redirectTo } : undefined);
+  if (response.error) {
+    return { ok: false as const, reason: response.error.message };
+  }
+
+  return { ok: true as const };
+}
+
+export async function logoutFromSupabase(scope: "local" | "global" = "local") {
   const client = getSupabaseClient();
   if (!client) {
     return;
   }
 
-  await client.auth.signOut();
+  await client.auth.signOut({ scope });
 }
 
 export async function getSupabaseMfaStatus(): Promise<SupabaseMfaStatusResult> {

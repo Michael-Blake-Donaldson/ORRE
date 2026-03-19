@@ -11,7 +11,7 @@ import { ProcessingQueue } from "./processing.js";
 import { buildAskMemoraAnswer } from "./qa.js";
 import { buildSessionSummary } from "./summary.js";
 import { ensureAppServer, stopAppServer } from "./appServer.js";
-import { beginSupabaseTotpEnrollment, disableSupabaseMfaFactor, getSupabaseMfaStatus, isSupabaseAuthConfigured, loginWithSupabase, logoutFromSupabase, registerWithSupabase, resendSupabaseVerification, verifySupabaseTotpEnrollment, verifySupabaseMfaCode, } from "./supabase.js";
+import { beginSupabaseTotpEnrollment, disableSupabaseMfaFactor, getSupabaseMfaStatus, isSupabaseAuthConfigured, loginWithSupabase, logoutFromSupabase, requestSupabasePasswordReset, registerWithSupabase, resendSupabaseVerification, verifySupabaseTotpEnrollment, verifySupabaseMfaCode, } from "./supabase.js";
 import { rateLimiters } from "./rateLimit.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -121,6 +121,15 @@ function verifyPassword(password, expectedHashHex, saltHex) {
 }
 function getActiveUserId() {
     return activeUserId;
+}
+function syncShadowUser(authUser, options) {
+    return store.upsertShadowUser({
+        id: authUser.id,
+        email: normalizeEmail(authUser.email),
+        displayName: authUser.displayName,
+        createdAt: new Date().toISOString(),
+        lastLoginAt: options?.lastLoginAt ?? null,
+    });
 }
 function parseSettings(raw) {
     const merged = {
@@ -325,6 +334,10 @@ ipcMain.handle("auth:register", async (_event, payload) => {
         recordingMode = "idle";
         recordingStartedAt = null;
         activeSessionId = null;
+        const shadowSync = syncShadowUser(cloud.user);
+        if (!shadowSync.ok) {
+            return { ok: false, reason: shadowSync.reason };
+        }
         return {
             ok: true,
             user: cloud.user,
@@ -408,6 +421,8 @@ ipcMain.handle("auth:login", async (_event, payload) => {
         recordingMode = "idle";
         recordingStartedAt = null;
         activeSessionId = null;
+        // Keep a local identity mirror so device passkeys work consistently for cloud accounts.
+        void syncShadowUser(cloud.user, { lastLoginAt: new Date().toISOString() });
         return {
             ok: true,
             user: cloud.user,
@@ -453,6 +468,7 @@ ipcMain.handle("auth:verifyMfa", async (_event, payload) => {
     recordingMode = "idle";
     recordingStartedAt = null;
     activeSessionId = null;
+    void syncShadowUser(result.user, { lastLoginAt: new Date().toISOString() });
     return {
         ok: true,
         user: result.user,
@@ -476,6 +492,30 @@ ipcMain.handle("auth:resendVerification", async (_event, payload) => {
         return { ok: false, reason: result.reason };
     }
     return { ok: true };
+});
+ipcMain.handle("auth:forgotPassword", async (_event, payload) => {
+    const email = normalizeEmail(payload.email ?? "");
+    const passwordResetLimit = rateLimiters.authPasswordReset.check(email);
+    if (!passwordResetLimit.isAllowed) {
+        return { ok: false, reason: passwordResetLimit.message };
+    }
+    if (!email || !email.includes("@")) {
+        return { ok: false, reason: "Enter a valid email address first." };
+    }
+    if (!isSupabaseAuthConfigured()) {
+        return {
+            ok: false,
+            reason: "Password reset email is available when cloud authentication is enabled.",
+        };
+    }
+    const result = await requestSupabasePasswordReset(email);
+    if (!result.ok) {
+        return { ok: false, reason: result.reason };
+    }
+    return {
+        ok: true,
+        message: "If an account exists for that email, reset instructions have been sent.",
+    };
 });
 ipcMain.handle("auth:getMfaStatus", async () => {
     if (!isSupabaseAuthConfigured()) {
@@ -547,7 +587,7 @@ ipcMain.handle("auth:disableMfa", async (_event, payload) => {
 ipcMain.handle("auth:logout", async () => {
     if (isSupabaseAuthConfigured()) {
         try {
-            await logoutFromSupabase();
+            await logoutFromSupabase("local");
         }
         catch {
             // Best-effort sign-out; local session will still clear.
@@ -561,13 +601,36 @@ ipcMain.handle("auth:logout", async () => {
     preferredDisplaySourceId = null;
     return { ok: true };
 });
-ipcMain.handle("auth:passkeyBeginRegistration", async () => {
-    if (isSupabaseAuthConfigured()) {
-        return { ok: false, reason: "Windows Hello passkeys are currently available for local accounts only." };
+ipcMain.handle("auth:logoutAllDevices", async () => {
+    if (!isSupabaseAuthConfigured()) {
+        return { ok: false, reason: "Global session revoke is available when cloud authentication is enabled." };
     }
+    try {
+        await logoutFromSupabase("global");
+    }
+    catch (error) {
+        return {
+            ok: false,
+            reason: error instanceof Error ? error.message : "Could not revoke active sessions.",
+        };
+    }
+    activeUserId = null;
+    activeAuthUser = null;
+    recordingMode = "idle";
+    recordingStartedAt = null;
+    activeSessionId = null;
+    preferredDisplaySourceId = null;
+    return { ok: true };
+});
+ipcMain.handle("auth:passkeyBeginRegistration", async () => {
     const userId = getActiveUserId();
-    if (!userId) {
+    const authUser = activeAuthUser;
+    if (!userId || !authUser) {
         return { ok: false, reason: "Sign in with your password first to enable Windows Hello." };
+    }
+    const shadowSync = syncShadowUser(authUser);
+    if (!shadowSync.ok) {
+        return { ok: false, reason: shadowSync.reason };
     }
     const user = store.getUserById(userId);
     if (!user) {
@@ -600,9 +663,6 @@ ipcMain.handle("auth:passkeyBeginRegistration", async () => {
     };
 });
 ipcMain.handle("auth:passkeyFinishRegistration", async (_event, payload) => {
-    if (isSupabaseAuthConfigured()) {
-        return { ok: false, reason: "Windows Hello passkeys are currently available for local accounts only." };
-    }
     const userId = getActiveUserId();
     if (!userId) {
         return { ok: false, reason: "Sign in with your password first to enable Windows Hello." };
@@ -645,16 +705,19 @@ ipcMain.handle("auth:passkeyFinishRegistration", async (_event, payload) => {
     }
 });
 ipcMain.handle("auth:passkeyBeginLogin", async (_event, payload) => {
-    if (isSupabaseAuthConfigured()) {
-        return { ok: false, reason: "Windows Hello passkeys are currently available for local accounts only." };
-    }
     const email = normalizeEmail(payload?.email ?? "");
     if (!email || !email.includes("@")) {
         return { ok: false, reason: "Enter your account email to use Windows Hello." };
     }
+    if (activeAuthUser && normalizeEmail(activeAuthUser.email) === email) {
+        const shadowSync = syncShadowUser(activeAuthUser);
+        if (!shadowSync.ok) {
+            return { ok: false, reason: shadowSync.reason };
+        }
+    }
     const user = store.getUserByEmail(email);
     if (!user) {
-        return { ok: false, reason: "No local account was found for this email." };
+        return { ok: false, reason: "No account was found for this email on this device." };
     }
     const passkeys = store.listUserPasskeys(user.id);
     if (!passkeys.length) {
@@ -677,9 +740,6 @@ ipcMain.handle("auth:passkeyBeginLogin", async (_event, payload) => {
     };
 });
 ipcMain.handle("auth:passkeyFinishLogin", async (_event, payload) => {
-    if (isSupabaseAuthConfigured()) {
-        return { ok: false, reason: "Windows Hello passkeys are currently available for local accounts only." };
-    }
     const email = normalizeEmail(payload?.email ?? "");
     if (!email || !email.includes("@")) {
         return { ok: false, reason: "Enter your account email to use Windows Hello." };
@@ -730,6 +790,7 @@ ipcMain.handle("auth:passkeyFinishLogin", async (_event, payload) => {
         recordingStartedAt = null;
         activeSessionId = null;
         store.setUserLastLoginAt(user.id, usedAt);
+        void syncShadowUser(activeAuthUser, { lastLoginAt: usedAt });
         return {
             ok: true,
             user: toAuthUser(user),

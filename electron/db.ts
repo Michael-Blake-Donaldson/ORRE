@@ -318,6 +318,63 @@ export class MemoraStore {
     this.db.prepare(`UPDATE users SET last_login_at = ? WHERE id = ?`).run(timestamp, userId);
   }
 
+  upsertShadowUser(input: {
+    id: string;
+    email: string;
+    displayName: string;
+    createdAt: string;
+    lastLoginAt?: string | null;
+  }): { ok: true } | { ok: false; reason: string } {
+    const existingByEmail = this.getUserByEmail(input.email);
+    if (existingByEmail && existingByEmail.id !== input.id) {
+      return {
+        ok: false,
+        reason: "This email is already linked to a different local account on this device.",
+      };
+    }
+
+    const existingById = this.getUserById(input.id);
+
+    if (!existingById) {
+      const placeholderSalt = crypto.randomUUID().replace(/-/g, "");
+      const placeholderHash = `${crypto.randomUUID().replace(/-/g, "")}${crypto.randomUUID().replace(/-/g, "")}`;
+
+      this.db
+        .prepare(
+          `INSERT INTO users (id, email, display_name, password_hash, password_salt, created_at, last_login_at)
+           VALUES (@id, @email, @display_name, @password_hash, @password_salt, @created_at, @last_login_at)`,
+        )
+        .run({
+          id: input.id,
+          email: input.email,
+          display_name: input.displayName,
+          password_hash: placeholderHash,
+          password_salt: placeholderSalt,
+          created_at: input.createdAt,
+          last_login_at: input.lastLoginAt ?? null,
+        });
+
+      return { ok: true };
+    }
+
+    this.db
+      .prepare(
+        `UPDATE users
+         SET email = @email,
+             display_name = @display_name,
+             last_login_at = COALESCE(@last_login_at, last_login_at)
+         WHERE id = @id`,
+      )
+      .run({
+        id: input.id,
+        email: input.email,
+        display_name: input.displayName,
+        last_login_at: input.lastLoginAt ?? null,
+      });
+
+    return { ok: true };
+  }
+
   listUserPasskeys(userId: string): UserPasskeyRow[] {
     return this.db
       .prepare(
