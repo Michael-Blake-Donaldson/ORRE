@@ -102,6 +102,17 @@ const api = {
   getCurrentUser: async () => {
     return ipcRenderer.invoke("auth:getCurrentUser") as Promise<AuthUser | null>;
   },
+  getAuthSessionContext: async () => {
+    return ipcRenderer.invoke("auth:getSessionContext") as Promise<
+      | {
+          ok: true;
+          cloudConfigured: boolean;
+          cloudSessionActive: boolean;
+          requiresPasswordReauth: boolean;
+        }
+      | { ok: false; reason: string }
+    >;
+  },
   registerUser: async (payload: { email: string; password: string; displayName: string; acceptedLegal: boolean }) => {
     return ipcRenderer.invoke("auth:register", payload) as Promise<
       | { ok: true; user: AuthUser; requiresEmailVerification?: boolean }

@@ -251,3 +251,18 @@ export async function disableSupabaseMfaFactor(factorId) {
     }
     return { ok: true };
 }
+export async function getSupabaseSessionState() {
+    const client = getSupabaseClient();
+    if (!client) {
+        return { ok: false, reason: "Supabase is not configured." };
+    }
+    const response = await client.auth.getSession();
+    if (response.error) {
+        return { ok: false, reason: response.error.message };
+    }
+    return {
+        ok: true,
+        active: Boolean(response.data.session),
+        userId: response.data.session?.user?.id ?? null,
+    };
+}

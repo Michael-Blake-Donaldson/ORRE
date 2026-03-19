@@ -25,6 +25,8 @@ const mfaCancelBtn = document.getElementById("mfaCancelBtn");
 const mfaStatusText = document.getElementById("mfaStatusText");
 const revokeSessionsBtn = document.getElementById("revokeSessionsBtn");
 const revokeSessionsStatus = document.getElementById("revokeSessionsStatus");
+const reauthSecurityBtn = document.getElementById("reauthSecurityBtn");
+const reauthSecurityStatus = document.getElementById("reauthSecurityStatus");
 
 const DEFAULT_SETTINGS = {
   defaultMode: "session",
@@ -44,11 +46,14 @@ const diagnostics = {
   lastCaptureError: "none",
 };
 
+let currentUserEmail = "";
+
 const mfaState = {
   configured: false,
   enabled: false,
   factors: [],
   pendingFactorId: null,
+  requiresPasswordReauth: false,
 };
 
 function setMfaStatus(text) {
@@ -63,6 +68,12 @@ function setRevokeSessionsStatus(text) {
   }
 }
 
+function setReauthSecurityStatus(text) {
+  if (reauthSecurityStatus) {
+    reauthSecurityStatus.textContent = text;
+  }
+}
+
 function renderMfaShell() {
   if (mfaStateLabel) {
     if (!mfaState.configured) {
@@ -73,15 +84,15 @@ function renderMfaShell() {
   }
 
   if (mfaStartBtn) {
-    mfaStartBtn.disabled = !mfaState.configured || mfaState.enabled;
+    mfaStartBtn.disabled = !mfaState.configured || mfaState.enabled || mfaState.requiresPasswordReauth;
   }
 
   if (mfaDisableBtn) {
-    mfaDisableBtn.disabled = !mfaState.enabled;
+    mfaDisableBtn.disabled = !mfaState.enabled || mfaState.requiresPasswordReauth;
   }
 
   if (revokeSessionsBtn) {
-    revokeSessionsBtn.disabled = !mfaState.configured;
+    revokeSessionsBtn.disabled = !mfaState.configured || mfaState.requiresPasswordReauth;
   }
 }
 
@@ -125,6 +136,25 @@ async function loadMfaStatus() {
     return;
   }
 
+  const sessionContext = await api.getAuthSessionContext();
+  if (!sessionContext.ok) {
+    setMfaStatus(sessionContext.reason || "Could not load account session context.");
+    return;
+  }
+
+  mfaState.configured = sessionContext.cloudConfigured;
+  mfaState.requiresPasswordReauth = sessionContext.requiresPasswordReauth;
+
+  if (mfaState.requiresPasswordReauth) {
+    mfaState.enabled = false;
+    mfaState.factors = [];
+    renderMfaShell();
+    setMfaStatus("Password re-authentication required to manage MFA.");
+    setRevokeSessionsStatus("Re-authenticate to revoke active cloud sessions.");
+    setReauthSecurityStatus("You are signed in for app access, but cloud security actions need a fresh password sign-in.");
+    return;
+  }
+
   const response = await api.getMfaStatus();
   if (!response.ok) {
     setMfaStatus(response.reason || "Could not load MFA status.");
@@ -139,11 +169,18 @@ async function loadMfaStatus() {
   if (!mfaState.configured) {
     setMfaStatus("Supabase auth is not configured. Add SUPABASE_URL and key in .env to use MFA.");
     setRevokeSessionsStatus("Global session revoke is available with cloud authentication.");
+    setReauthSecurityStatus("Cloud security re-auth is unavailable because cloud auth is not configured.");
     return;
   }
 
   setMfaStatus(mfaState.enabled ? "MFA is enabled for your account." : "MFA is not enabled yet.");
   setRevokeSessionsStatus("Use this if your account was accessed on a device you no longer trust.");
+  setReauthSecurityStatus("Cloud security session active.");
+}
+
+function startSecurityReauth() {
+  const emailHint = encodeURIComponent(currentUserEmail || "");
+  window.location.href = `./auth.html?reauth=1&mode=login&email=${emailHint}`;
 }
 
 async function revokeAllSessionsFlow() {
@@ -511,6 +548,8 @@ async function ensureAuthenticated() {
     return false;
   }
 
+  currentUserEmail = user.email || "";
+
   return true;
 }
 
@@ -585,6 +624,10 @@ mfaCancelBtn?.addEventListener("click", () => {
 
 revokeSessionsBtn?.addEventListener("click", async () => {
   await revokeAllSessionsFlow();
+});
+
+reauthSecurityBtn?.addEventListener("click", () => {
+  startSecurityReauth();
 });
 
 setupNavigation();

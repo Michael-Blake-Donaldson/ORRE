@@ -68,6 +68,8 @@ const authPreloaderSubtext = document.getElementById("authPreloaderSubtext");
 
 let pendingMfa = null;
 let isSubmitting = false;
+const authPageParams = new URLSearchParams(window.location.search);
+const forcedReauth = authPageParams.get("reauth") === "1";
 
 function wait(ms) {
   return new Promise((resolve) => {
@@ -371,8 +373,25 @@ async function checkExistingSession() {
   }
 
   const user = await api.getCurrentUser();
-  if (user) {
+  if (user && !forcedReauth) {
     window.location.href = "./index.html";
+  }
+}
+
+function applyAuthPageContext() {
+  const mode = authPageParams.get("mode");
+  if (mode === "register" || mode === "login") {
+    setMode(mode);
+  }
+
+  const email = (authPageParams.get("email") ?? "").trim();
+  if (email && loginEmail) {
+    loginEmail.value = email;
+  }
+
+  if (forcedReauth) {
+    setMode("login");
+    setStatus("Please re-enter your password to unlock cloud security actions.");
   }
 }
 
@@ -874,6 +893,7 @@ switchInlineBtn?.addEventListener("click", () => {
 });
 
 setMode("login");
+applyAuthPageContext();
 startAuthEntrance().catch((error) => {
   console.error(error);
   authPreloader?.classList.add("auth-preloader--hidden");

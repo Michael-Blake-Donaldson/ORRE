@@ -3,6 +3,9 @@ const api = {
     getCurrentUser: async () => {
         return ipcRenderer.invoke("auth:getCurrentUser");
     },
+    getAuthSessionContext: async () => {
+        return ipcRenderer.invoke("auth:getSessionContext");
+    },
     registerUser: async (payload) => {
         return ipcRenderer.invoke("auth:register", payload);
     },

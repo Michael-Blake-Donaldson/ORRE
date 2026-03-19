@@ -11,7 +11,7 @@ import { ProcessingQueue } from "./processing.js";
 import { buildAskMemoraAnswer } from "./qa.js";
 import { buildSessionSummary } from "./summary.js";
 import { ensureAppServer, stopAppServer } from "./appServer.js";
-import { beginSupabaseTotpEnrollment, disableSupabaseMfaFactor, getSupabaseMfaStatus, isSupabaseAuthConfigured, loginWithSupabase, logoutFromSupabase, requestSupabasePasswordReset, registerWithSupabase, resendSupabaseVerification, verifySupabaseTotpEnrollment, verifySupabaseMfaCode, } from "./supabase.js";
+import { beginSupabaseTotpEnrollment, disableSupabaseMfaFactor, getSupabaseSessionState, getSupabaseMfaStatus, isSupabaseAuthConfigured, loginWithSupabase, logoutFromSupabase, requestSupabasePasswordReset, registerWithSupabase, resendSupabaseVerification, verifySupabaseTotpEnrollment, verifySupabaseMfaCode, } from "./supabase.js";
 import { rateLimiters } from "./rateLimit.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -289,6 +289,37 @@ ipcMain.handle("auth:getCurrentUser", async () => {
     const authUser = toAuthUser(user);
     activeAuthUser = authUser;
     return authUser;
+});
+ipcMain.handle("auth:getSessionContext", async () => {
+    const cloudConfigured = isSupabaseAuthConfigured();
+    if (!cloudConfigured) {
+        return {
+            ok: true,
+            cloudConfigured: false,
+            cloudSessionActive: false,
+            requiresPasswordReauth: false,
+        };
+    }
+    const activeUser = activeAuthUser;
+    if (!activeUser) {
+        return {
+            ok: true,
+            cloudConfigured: true,
+            cloudSessionActive: false,
+            requiresPasswordReauth: false,
+        };
+    }
+    const sessionState = await getSupabaseSessionState();
+    if (!sessionState.ok) {
+        return { ok: false, reason: sessionState.reason };
+    }
+    const cloudSessionMatchesUser = sessionState.active && sessionState.userId === activeUser.id;
+    return {
+        ok: true,
+        cloudConfigured: true,
+        cloudSessionActive: cloudSessionMatchesUser,
+        requiresPasswordReauth: !cloudSessionMatchesUser,
+    };
 });
 ipcMain.handle("auth:register", async (_event, payload) => {
     const email = normalizeEmail(payload.email ?? "");

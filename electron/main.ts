@@ -19,6 +19,7 @@ import { ensureAppServer, stopAppServer } from "./appServer.js";
 import {
   beginSupabaseTotpEnrollment,
   disableSupabaseMfaFactor,
+  getSupabaseSessionState,
   getSupabaseMfaStatus,
   isSupabaseAuthConfigured,
   loginWithSupabase,
@@ -392,6 +393,42 @@ ipcMain.handle("auth:getCurrentUser", async () => {
   const authUser = toAuthUser(user);
   activeAuthUser = authUser;
   return authUser;
+});
+
+ipcMain.handle("auth:getSessionContext", async () => {
+  const cloudConfigured = isSupabaseAuthConfigured();
+  if (!cloudConfigured) {
+    return {
+      ok: true,
+      cloudConfigured: false,
+      cloudSessionActive: false,
+      requiresPasswordReauth: false,
+    };
+  }
+
+  const activeUser = activeAuthUser;
+  if (!activeUser) {
+    return {
+      ok: true,
+      cloudConfigured: true,
+      cloudSessionActive: false,
+      requiresPasswordReauth: false,
+    };
+  }
+
+  const sessionState = await getSupabaseSessionState();
+  if (!sessionState.ok) {
+    return { ok: false, reason: sessionState.reason };
+  }
+
+  const cloudSessionMatchesUser = sessionState.active && sessionState.userId === activeUser.id;
+
+  return {
+    ok: true,
+    cloudConfigured: true,
+    cloudSessionActive: cloudSessionMatchesUser,
+    requiresPasswordReauth: !cloudSessionMatchesUser,
+  };
 });
 
 ipcMain.handle("auth:register", async (_event, payload: { email: string; password: string; displayName: string; acceptedLegal?: boolean }) => {
