@@ -37,6 +37,19 @@ SUPABASE_PUBLISHABLE_KEY=your-publishable-key
 
 1. Restart the app (`npm run dev`)
 
+### Security Settings (Recommended)
+
+In Supabase dashboard:
+
+1. Auth -> Providers -> Email:
+	1. Enable Email provider
+	1. Enable "Confirm email"
+1. Auth -> Multi-factor:
+	1. Enable TOTP MFA
+	1. Require MFA for users who enroll factors
+
+Memora now enforces verified email for Supabase logins and supports MFA code challenge/verification during sign-in.
+
 Note: The first transcript run downloads the Whisper tiny model to local cache, which can take a minute depending on network speed.
 
 ## Build

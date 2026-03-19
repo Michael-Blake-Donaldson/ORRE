@@ -67,6 +67,7 @@ export async function registerWithSupabase(email, password, displayName) {
     return {
         ok: true,
         user: toAuthUser(data.user),
+        requiresEmailVerification: !Boolean(data.user.email_confirmed_at),
     };
 }
 export async function loginWithSupabase(email, password) {
@@ -84,10 +85,76 @@ export async function loginWithSupabase(email, password) {
     if (!data.user) {
         return { ok: false, reason: "Login succeeded but user payload is missing." };
     }
+    if (!data.user.email_confirmed_at) {
+        return { ok: false, reason: "email-not-confirmed" };
+    }
+    const factorResponse = await client.auth.mfa.listFactors();
+    if (factorResponse.error) {
+        return { ok: false, reason: factorResponse.error.message };
+    }
+    const verifiedTotp = (factorResponse.data.totp ?? []).filter((factor) => factor.status === "verified");
+    if (verifiedTotp.length > 0) {
+        const primaryFactor = verifiedTotp[0];
+        const challengeResponse = await client.auth.mfa.challenge({ factorId: primaryFactor.id });
+        if (challengeResponse.error || !challengeResponse.data?.id) {
+            return {
+                ok: false,
+                reason: challengeResponse.error?.message ?? "Could not initialize MFA challenge.",
+            };
+        }
+        return {
+            ok: false,
+            reason: "mfa-required",
+            factorId: primaryFactor.id,
+            challengeId: challengeResponse.data.id,
+        };
+    }
     return {
         ok: true,
         user: toAuthUser(data.user),
     };
+}
+export async function verifySupabaseMfaCode(factorId, challengeId, code) {
+    const client = getSupabaseClient();
+    if (!client) {
+        return { ok: false, reason: "Supabase is not configured." };
+    }
+    const response = await client.auth.mfa.verify({
+        factorId,
+        challengeId,
+        code,
+    });
+    if (response.error) {
+        return { ok: false, reason: response.error.message };
+    }
+    const userResponse = await client.auth.getUser();
+    if (userResponse.error || !userResponse.data.user) {
+        return {
+            ok: false,
+            reason: userResponse.error?.message ?? "Could not load authenticated user.",
+        };
+    }
+    if (!userResponse.data.user.email_confirmed_at) {
+        return { ok: false, reason: "email-not-confirmed" };
+    }
+    return {
+        ok: true,
+        user: toAuthUser(userResponse.data.user),
+    };
+}
+export async function resendSupabaseVerification(email) {
+    const client = getSupabaseClient();
+    if (!client) {
+        return { ok: false, reason: "Supabase is not configured." };
+    }
+    const response = await client.auth.resend({
+        type: "signup",
+        email,
+    });
+    if (response.error) {
+        return { ok: false, reason: response.error.message };
+    }
+    return { ok: true };
 }
 export async function logoutFromSupabase() {
     const client = getSupabaseClient();

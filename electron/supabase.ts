@@ -6,6 +6,21 @@ type AuthUser = {
   displayName: string;
 };
 
+type SupabaseRegisterResult =
+  | { ok: true; user: AuthUser; requiresEmailVerification: boolean }
+  | { ok: false; reason: string };
+
+type SupabaseLoginResult =
+  | { ok: true; user: AuthUser }
+  | { ok: false; reason: "mfa-required"; factorId: string; challengeId: string }
+  | { ok: false; reason: "email-not-confirmed" }
+  | { ok: false; reason: string };
+
+type SupabaseMfaVerifyResult =
+  | { ok: true; user: AuthUser }
+  | { ok: false; reason: "email-not-confirmed" }
+  | { ok: false; reason: string };
+
 let supabaseClient: SupabaseClient | null = null;
 
 function getConfiguredUrl() {
@@ -64,7 +79,7 @@ function toAuthUser(user: User): AuthUser {
   };
 }
 
-export async function registerWithSupabase(email: string, password: string, displayName: string) {
+export async function registerWithSupabase(email: string, password: string, displayName: string): Promise<SupabaseRegisterResult> {
   const client = getSupabaseClient();
   if (!client) {
     return { ok: false as const, reason: "Supabase is not configured." };
@@ -91,10 +106,11 @@ export async function registerWithSupabase(email: string, password: string, disp
   return {
     ok: true as const,
     user: toAuthUser(data.user),
+    requiresEmailVerification: !Boolean(data.user.email_confirmed_at),
   };
 }
 
-export async function loginWithSupabase(email: string, password: string) {
+export async function loginWithSupabase(email: string, password: string): Promise<SupabaseLoginResult> {
   const client = getSupabaseClient();
   if (!client) {
     return { ok: false as const, reason: "Supabase is not configured." };
@@ -113,10 +129,96 @@ export async function loginWithSupabase(email: string, password: string) {
     return { ok: false as const, reason: "Login succeeded but user payload is missing." };
   }
 
+  if (!data.user.email_confirmed_at) {
+    return { ok: false as const, reason: "email-not-confirmed" };
+  }
+
+  const factorResponse = await client.auth.mfa.listFactors();
+  if (factorResponse.error) {
+    return { ok: false as const, reason: factorResponse.error.message };
+  }
+
+  const verifiedTotp = (factorResponse.data.totp ?? []).filter((factor) => factor.status === "verified");
+
+  if (verifiedTotp.length > 0) {
+    const primaryFactor = verifiedTotp[0];
+    const challengeResponse = await client.auth.mfa.challenge({ factorId: primaryFactor.id });
+
+    if (challengeResponse.error || !challengeResponse.data?.id) {
+      return {
+        ok: false as const,
+        reason: challengeResponse.error?.message ?? "Could not initialize MFA challenge.",
+      };
+    }
+
+    return {
+      ok: false as const,
+      reason: "mfa-required",
+      factorId: primaryFactor.id,
+      challengeId: challengeResponse.data.id,
+    };
+  }
+
   return {
     ok: true as const,
     user: toAuthUser(data.user),
   };
+}
+
+export async function verifySupabaseMfaCode(
+  factorId: string,
+  challengeId: string,
+  code: string,
+): Promise<SupabaseMfaVerifyResult> {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { ok: false as const, reason: "Supabase is not configured." };
+  }
+
+  const response = await client.auth.mfa.verify({
+    factorId,
+    challengeId,
+    code,
+  });
+
+  if (response.error) {
+    return { ok: false as const, reason: response.error.message };
+  }
+
+  const userResponse = await client.auth.getUser();
+  if (userResponse.error || !userResponse.data.user) {
+    return {
+      ok: false as const,
+      reason: userResponse.error?.message ?? "Could not load authenticated user.",
+    };
+  }
+
+  if (!userResponse.data.user.email_confirmed_at) {
+    return { ok: false as const, reason: "email-not-confirmed" };
+  }
+
+  return {
+    ok: true as const,
+    user: toAuthUser(userResponse.data.user),
+  };
+}
+
+export async function resendSupabaseVerification(email: string) {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { ok: false as const, reason: "Supabase is not configured." };
+  }
+
+  const response = await client.auth.resend({
+    type: "signup",
+    email,
+  });
+
+  if (response.error) {
+    return { ok: false as const, reason: response.error.message };
+  }
+
+  return { ok: true as const };
 }
 
 export async function logoutFromSupabase() {

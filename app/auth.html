@@ -54,6 +54,15 @@
             <input id="loginEmail" type="email" autocomplete="username" placeholder="Email" required />
             <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Enter your password" required />
             <button class="button button--primary auth-submit" type="submit">Login</button>
+            <button id="resendVerificationBtn" class="auth-link-btn auth-link-btn--left auth-form__helper auth-form__helper--hidden" type="button">
+              Resend verification email
+            </button>
+          </form>
+
+          <form id="mfaForm" class="auth-form auth-form--hidden">
+            <input id="mfaCode" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="Enter 6-digit verification code" minlength="6" maxlength="8" required />
+            <button class="button button--primary auth-submit" type="submit">Verify Code</button>
+            <button id="mfaBackBtn" class="auth-link-btn auth-link-btn--left auth-form__helper" type="button">Back to login</button>
           </form>
 
           <p id="authStatus" class="status auth-status">Ready.</p>

@@ -1257,6 +1257,11 @@ ul {
   padding: 0;
 }
 
+.auth-link-btn--left {
+  text-align: left;
+  justify-self: start;
+}
+
 .auth-link-btn:hover {
   color: #ffffff;
 }
@@ -1265,6 +1270,15 @@ ul {
   display: grid;
   gap: 12px;
   margin-top: 2px;
+}
+
+.auth-form__helper {
+  margin-top: -2px;
+  font-size: 13px;
+}
+
+.auth-form__helper--hidden {
+  display: none;
 }
 
 .auth-form input {

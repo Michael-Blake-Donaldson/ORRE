@@ -9,6 +9,12 @@ const api = {
     loginUser: async (payload) => {
         return ipcRenderer.invoke("auth:login", payload);
     },
+    verifyMfaLogin: async (payload) => {
+        return ipcRenderer.invoke("auth:verifyMfa", payload);
+    },
+    resendVerificationEmail: async (payload) => {
+        return ipcRenderer.invoke("auth:resendVerification", payload);
+    },
     logoutUser: async () => {
         return ipcRenderer.invoke("auth:logout");
     },

@@ -9,7 +9,14 @@ import { createDb, type MemoraStore, type SessionRow } from "./db.js";
 import { ProcessingQueue } from "./processing.js";
 import { buildAskMemoraAnswer } from "./qa.js";
 import { buildSessionSummary } from "./summary.js";
-import { isSupabaseAuthConfigured, loginWithSupabase, logoutFromSupabase, registerWithSupabase } from "./supabase.js";
+import {
+  isSupabaseAuthConfigured,
+  loginWithSupabase,
+  logoutFromSupabase,
+  registerWithSupabase,
+  resendSupabaseVerification,
+  verifySupabaseMfaCode,
+} from "./supabase.js";
 
 type RecordingMode = "idle" | "session" | "clip" | "always-on";
 
@@ -301,6 +308,14 @@ ipcMain.handle("auth:register", async (_event, payload: { email: string; passwor
       return { ok: false, reason: cloud.reason };
     }
 
+    if (cloud.requiresEmailVerification) {
+      return {
+        ok: true,
+        user: cloud.user,
+        requiresEmailVerification: true,
+      };
+    }
+
     activeUserId = cloud.user.id;
     activeAuthUser = cloud.user;
     recordingMode = "idle";
@@ -310,6 +325,7 @@ ipcMain.handle("auth:register", async (_event, payload: { email: string; passwor
     return {
       ok: true,
       user: cloud.user,
+      requiresEmailVerification: false,
     };
   }
 
@@ -347,6 +363,7 @@ ipcMain.handle("auth:register", async (_event, payload: { email: string; passwor
       email,
       displayName,
     },
+    requiresEmailVerification: false,
   };
 });
 
@@ -357,6 +374,19 @@ ipcMain.handle("auth:login", async (_event, payload: { email: string; password: 
   if (isSupabaseAuthConfigured()) {
     const cloud = await loginWithSupabase(email, password);
     if (!cloud.ok) {
+      if (cloud.reason === "mfa-required") {
+        return {
+          ok: false,
+          reason: cloud.reason,
+          factorId: cloud.factorId,
+          challengeId: cloud.challengeId,
+        };
+      }
+
+      if (cloud.reason === "email-not-confirmed") {
+        return { ok: false, reason: "Please verify your email before logging in." };
+      }
+
       return { ok: false, reason: cloud.reason || "Invalid email or password." };
     }
 
@@ -393,6 +423,52 @@ ipcMain.handle("auth:login", async (_event, payload: { email: string; password: 
     ok: true,
     user: toAuthUser(user),
   };
+});
+
+ipcMain.handle(
+  "auth:verifyMfa",
+  async (_event, payload: { factorId: string; challengeId: string; code: string }) => {
+    if (!isSupabaseAuthConfigured()) {
+      return { ok: false, reason: "MFA verification requires Supabase configuration." };
+    }
+
+    const result = await verifySupabaseMfaCode(payload.factorId, payload.challengeId, payload.code);
+    if (!result.ok) {
+      if (result.reason === "email-not-confirmed") {
+        return { ok: false, reason: "Please verify your email before logging in." };
+      }
+      return { ok: false, reason: result.reason };
+    }
+
+    activeUserId = result.user.id;
+    activeAuthUser = result.user;
+    recordingMode = "idle";
+    recordingStartedAt = null;
+    activeSessionId = null;
+
+    return {
+      ok: true,
+      user: result.user,
+    };
+  },
+);
+
+ipcMain.handle("auth:resendVerification", async (_event, payload: { email: string }) => {
+  const email = normalizeEmail(payload.email ?? "");
+  if (!email || !email.includes("@")) {
+    return { ok: false, reason: "Enter a valid email address first." };
+  }
+
+  if (!isSupabaseAuthConfigured()) {
+    return { ok: false, reason: "Email verification resend is available when Supabase is configured." };
+  }
+
+  const result = await resendSupabaseVerification(email);
+  if (!result.ok) {
+    return { ok: false, reason: result.reason };
+  }
+
+  return { ok: true };
 });
 
 ipcMain.handle("auth:logout", async () => {

@@ -104,15 +104,25 @@ const api = {
   },
   registerUser: async (payload: { email: string; password: string; displayName: string }) => {
     return ipcRenderer.invoke("auth:register", payload) as Promise<
-      | { ok: true; user: AuthUser }
+      | { ok: true; user: AuthUser; requiresEmailVerification?: boolean }
       | { ok: false; reason: string }
     >;
   },
   loginUser: async (payload: { email: string; password: string }) => {
     return ipcRenderer.invoke("auth:login", payload) as Promise<
       | { ok: true; user: AuthUser }
+      | { ok: false; reason: "mfa-required"; factorId: string; challengeId: string }
       | { ok: false; reason: string }
     >;
+  },
+  verifyMfaLogin: async (payload: { factorId: string; challengeId: string; code: string }) => {
+    return ipcRenderer.invoke("auth:verifyMfa", payload) as Promise<
+      | { ok: true; user: AuthUser }
+      | { ok: false; reason: string }
+    >;
+  },
+  resendVerificationEmail: async (payload: { email: string }) => {
+    return ipcRenderer.invoke("auth:resendVerification", payload) as Promise<{ ok: true } | { ok: false; reason: string }>;
   },
   logoutUser: async () => {
     return ipcRenderer.invoke("auth:logout") as Promise<{ ok: true }>;
