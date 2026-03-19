@@ -55,23 +55,88 @@ const registerSubmitBtn = document.getElementById("registerSubmitBtn");
 const mfaSubmitBtn = document.getElementById("mfaSubmitBtn");
 const authShell = document.getElementById("authShell");
 const authPreloader = document.getElementById("authPreloader");
+const authPreloaderText = document.getElementById("authPreloaderText");
+const authPreloaderSubtext = document.getElementById("authPreloaderSubtext");
 
 let pendingMfa = null;
 let isSubmitting = false;
 
-function startAuthEntrance() {
-  const minimumLoadMs = 920;
+function wait(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function setLoaderStatus(title, subtitle) {
+  if (authPreloaderText) {
+    authPreloaderText.textContent = title;
+  }
+
+  if (authPreloaderSubtext) {
+    authPreloaderSubtext.textContent = subtitle;
+  }
+}
+
+async function waitForOnlineConnection() {
+  if (navigator.onLine) {
+    return;
+  }
+
+  setLoaderStatus("Waiting for connection...", "We will continue automatically when you are back online.");
+
+  await new Promise((resolve) => {
+    const onOnline = () => {
+      window.removeEventListener("online", onOnline);
+      resolve(undefined);
+    };
+
+    window.addEventListener("online", onOnline);
+  });
+}
+
+async function waitForConnectionReadiness() {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
+  // Keep loading until we can talk to the desktop bridge and the device is online.
+  while (true) {
+    await waitForOnlineConnection();
+
+    try {
+      setLoaderStatus("Connecting securely...", "Checking your authentication services.");
+
+      await Promise.race([
+        api.getCurrentUser(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("connection-timeout")), 2600)),
+      ]);
+
+      return;
+    } catch {
+      setLoaderStatus("Still reconnecting...", "Connection is unstable, retrying now.");
+      await wait(900);
+    }
+  }
+}
+
+async function startAuthEntrance() {
+  const minimumLoadMs = 3000 + Math.floor(Math.random() * 2001);
+  const minTimer = wait(minimumLoadMs);
+
+  setLoaderStatus("Warming up your secure workspace...", "Loading interface and preparing your session.");
+
+  await Promise.all([minTimer, waitForConnectionReadiness()]);
+
+  authPreloader?.classList.add("auth-preloader--hidden");
+  authShell?.classList.remove("auth-shell--hidden");
+  authShell?.classList.add("auth-shell--ready");
+  authShell?.classList.add("auth-shell--staggered");
+  document.body.classList.remove("auth-preload");
 
   setTimeout(() => {
-    authPreloader?.classList.add("auth-preloader--hidden");
-    authShell?.classList.remove("auth-shell--hidden");
-    authShell?.classList.add("auth-shell--ready");
-    document.body.classList.remove("auth-preload");
-
-    setTimeout(() => {
-      authPreloader?.remove();
-    }, 420);
-  }, minimumLoadMs);
+    authPreloader?.remove();
+  }, 420);
 }
 
 function base64UrlToArrayBuffer(base64url) {
@@ -744,7 +809,14 @@ switchInlineBtn?.addEventListener("click", () => {
 });
 
 setMode("login");
-startAuthEntrance();
+startAuthEntrance().catch((error) => {
+  console.error(error);
+  authPreloader?.classList.add("auth-preloader--hidden");
+  authShell?.classList.remove("auth-shell--hidden");
+  authShell?.classList.add("auth-shell--ready");
+  authShell?.classList.add("auth-shell--staggered");
+  document.body.classList.remove("auth-preload");
+});
 checkExistingSession().catch((error) => {
   setStatus("Could not check session.");
   console.error(error);

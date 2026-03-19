@@ -1111,11 +1111,25 @@ ul {
   pointer-events: none;
 }
 
+.auth-shell--hidden .auth-visual,
+.auth-shell--hidden .auth-pane {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
 .auth-shell--ready {
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
   transition: opacity 420ms ease, transform 420ms ease;
+}
+
+.auth-shell--staggered .auth-visual {
+  animation: auth-reveal-left 560ms var(--ease-premium) 80ms both;
+}
+
+.auth-shell--staggered .auth-pane {
+  animation: auth-reveal-right 560ms var(--ease-premium) 200ms both;
 }
 
 .auth-preloader {
@@ -1159,7 +1173,16 @@ ul {
   margin: 0;
   color: #c6ddf5;
   font-size: 13px;
+  font-weight: 600;
   letter-spacing: 0.02em;
+}
+
+.auth-preloader__subtext {
+  margin: -2px 0 0;
+  color: #86a6c4;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  transition: opacity 240ms ease;
 }
 
 .auth-preloader--hidden {
@@ -1207,6 +1230,30 @@ ul {
   50% {
     transform: scale(1.03);
     box-shadow: inset 0 0 0 1px rgba(148, 216, 255, 0.2), 0 16px 34px rgba(49, 131, 255, 0.22);
+  }
+}
+
+@keyframes auth-reveal-left {
+  from {
+    opacity: 0;
+    transform: translateX(-12px) translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0) translateY(0);
+  }
+}
+
+@keyframes auth-reveal-right {
+  from {
+    opacity: 0;
+    transform: translateX(12px) translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0) translateY(0);
   }
 }
 
