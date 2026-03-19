@@ -196,12 +196,14 @@ async function getAvailableDisplaySources() {
 async function createWindow() {
     const appServer = await ensureAppServer(path.resolve(__dirname, "../app"));
     currentAppOrigin = appServer.origin;
+    const appIconPath = path.resolve(__dirname, "../app/assets/memora-logo.png");
     mainWindow = new BrowserWindow({
         width: 1280,
         height: 820,
         minWidth: 1100,
         minHeight: 700,
         title: "Memora",
+        icon: appIconPath,
         backgroundColor: "#0f1218",
         webPreferences: {
             preload: path.join(__dirname, "preload.js"),
