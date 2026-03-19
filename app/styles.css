@@ -1555,6 +1555,10 @@ ul {
   padding: 24px;
 }
 
+body.modal-open {
+  overflow: hidden;
+}
+
 .legal-modal--hidden {
   display: none;
 }
