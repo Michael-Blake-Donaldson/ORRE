@@ -10,6 +10,7 @@ import { ProcessingQueue } from "./processing.js";
 import { buildAskMemoraAnswer } from "./qa.js";
 import { buildSessionSummary } from "./summary.js";
 import { beginSupabaseTotpEnrollment, disableSupabaseMfaFactor, getSupabaseMfaStatus, isSupabaseAuthConfigured, loginWithSupabase, logoutFromSupabase, registerWithSupabase, resendSupabaseVerification, verifySupabaseTotpEnrollment, verifySupabaseMfaCode, } from "./supabase.js";
+import { rateLimiters } from "./rateLimit.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 let mainWindow = null;
@@ -217,6 +218,11 @@ ipcMain.handle("auth:register", async (_event, payload) => {
     const email = normalizeEmail(payload.email ?? "");
     const password = String(payload.password ?? "");
     const displayName = String(payload.displayName ?? "").trim();
+    // Check rate limit before validation
+    const registerLimit = rateLimiters.authRegister.check(email);
+    if (!registerLimit.isAllowed) {
+        return { ok: false, reason: registerLimit.message };
+    }
     if (!email || !email.includes("@")) {
         return { ok: false, reason: "Enter a valid email address." };
     }
@@ -285,6 +291,11 @@ ipcMain.handle("auth:register", async (_event, payload) => {
 ipcMain.handle("auth:login", async (_event, payload) => {
     const email = normalizeEmail(payload.email ?? "");
     const password = String(payload.password ?? "");
+    // Check rate limit before processing
+    const loginLimit = rateLimiters.authLogin.check(email);
+    if (!loginLimit.isAllowed) {
+        return { ok: false, reason: loginLimit.message };
+    }
     if (isSupabaseAuthConfigured()) {
         const cloud = await loginWithSupabase(email, password);
         if (!cloud.ok) {
@@ -334,6 +345,11 @@ ipcMain.handle("auth:login", async (_event, payload) => {
     };
 });
 ipcMain.handle("auth:verifyMfa", async (_event, payload) => {
+    // Check rate limit for MFA attempts (use challengeId or a fallback key)
+    const mfaLimit = rateLimiters.authMfaVerify.check(payload.challengeId);
+    if (!mfaLimit.isAllowed) {
+        return { ok: false, reason: mfaLimit.message };
+    }
     if (!isSupabaseAuthConfigured()) {
         return { ok: false, reason: "MFA verification requires Supabase configuration." };
     }
@@ -356,6 +372,11 @@ ipcMain.handle("auth:verifyMfa", async (_event, payload) => {
 });
 ipcMain.handle("auth:resendVerification", async (_event, payload) => {
     const email = normalizeEmail(payload.email ?? "");
+    // Check rate limit before validation
+    const resendLimit = rateLimiters.authResendVerification.check(email);
+    if (!resendLimit.isAllowed) {
+        return { ok: false, reason: resendLimit.message };
+    }
     if (!email || !email.includes("@")) {
         return { ok: false, reason: "Enter a valid email address first." };
     }
@@ -557,6 +578,11 @@ ipcMain.handle("processing:rerun", async (_event, sessionId) => {
     if (!userId) {
         return { ok: false, reason: "auth-required" };
     }
+    // Check rate limit for processing operations
+    const processingLimit = rateLimiters.processing.check(userId);
+    if (!processingLimit.isAllowed) {
+        return { ok: false, reason: processingLimit.message };
+    }
     const session = store.getSessionById(userId, sessionId);
     if (!session?.file_path) {
         return { ok: false, reason: "missing-file" };
@@ -588,6 +614,19 @@ ipcMain.handle("benchmark:run", async (_event, payload) => {
     const userId = getActiveUserId();
     if (!userId) {
         return {
+            questionCount: 0,
+            avgConfidence: 0,
+            lowConfidenceCount: 0,
+            lowCoverageCount: 0,
+            results: [],
+        };
+    }
+    // Check rate limit for ask/benchmark queries
+    const askLimit = rateLimiters.askQuery.check(userId);
+    if (!askLimit.isAllowed) {
+        return {
+            ok: false,
+            reason: askLimit.message,
             questionCount: 0,
             avgConfidence: 0,
             lowConfidenceCount: 0,

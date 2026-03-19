@@ -1,3 +1,5 @@
+import { clientRateLimiters, showRateLimitError, disableButtonWithCountdown } from "./rateLimitClient.js";
+
 const loginForm = document.getElementById("loginForm");
 const registerForm = document.getElementById("registerForm");
 const switchInlineBtn = document.getElementById("switchInlineBtn");
@@ -89,10 +91,19 @@ loginForm?.addEventListener("submit", async (event) => {
     return;
   }
 
+  const email = loginEmail?.value ?? "";
+
+  // Check client-side rate limit first
+  const loginLimit = clientRateLimiters.login.check(email);
+  if (!loginLimit.allowed) {
+    showRateLimitError(loginLimit.message);
+    return;
+  }
+
   setStatus("Signing in...");
 
   const result = await api.loginUser({
-    email: loginEmail?.value ?? "",
+    email,
     password: loginPassword?.value ?? "",
   });
 
@@ -140,6 +151,15 @@ registerForm?.addEventListener("submit", async (event) => {
     return;
   }
 
+  const email = registerEmail?.value ?? "";
+
+  // Check client-side rate limit first
+  const registerLimit = clientRateLimiters.register.check(email);
+  if (!registerLimit.allowed) {
+    showRateLimitError(registerLimit.message);
+    return;
+  }
+
   setStatus("Creating account...");
 
   const firstName = (registerFirstName?.value ?? "").trim();
@@ -158,7 +178,7 @@ registerForm?.addEventListener("submit", async (event) => {
 
   const result = await api.registerUser({
     displayName,
-    email: registerEmail?.value ?? "",
+    email,
     password: registerPassword?.value ?? "",
   });
 
@@ -186,6 +206,13 @@ mfaForm?.addEventListener("submit", async (event) => {
 
   const api = getMemoraApi();
   if (!api || !pendingMfa) {
+    return;
+  }
+
+  // Check client-side rate limit for MFA attempts
+  const mfaLimit = clientRateLimiters.mfa.check(pendingMfa.challengeId);
+  if (!mfaLimit.allowed) {
+    showRateLimitError(mfaLimit.message);
     return;
   }
 
@@ -226,6 +253,13 @@ resendVerificationBtn?.addEventListener("click", async () => {
   const emailValue = (loginEmail?.value ?? "").trim();
   if (!emailValue) {
     setStatus("Enter your email first, then resend verification.");
+    return;
+  }
+
+  // Check client-side rate limit for resend attempts
+  const resendLimit = clientRateLimiters.resendVerification.check(emailValue);
+  if (!resendLimit.allowed) {
+    showRateLimitError(resendLimit.message);
     return;
   }
 
