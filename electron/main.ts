@@ -9,6 +9,7 @@ import { createDb, type MemoraStore, type SessionRow } from "./db.js";
 import { ProcessingQueue } from "./processing.js";
 import { buildAskMemoraAnswer } from "./qa.js";
 import { buildSessionSummary } from "./summary.js";
+import { ensureAppServer, stopAppServer } from "./appServer.js";
 import {
   beginSupabaseTotpEnrollment,
   disableSupabaseMfaFactor,
@@ -195,7 +196,9 @@ async function getAvailableDisplaySources() {
   });
 }
 
-function createWindow() {
+async function createWindow() {
+  const appServer = await ensureAppServer(path.resolve(__dirname, "../app"));
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 820,
@@ -211,7 +214,7 @@ function createWindow() {
     },
   });
 
-  mainWindow.loadFile(path.resolve(__dirname, "../app/auth.html"));
+  await mainWindow.loadURL(`${appServer.origin}/auth.html`);
 
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -246,19 +249,24 @@ app.whenReady().then(() => {
     },
   );
 
-  createWindow();
+  void createWindow();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+      void createWindow();
     }
   });
 });
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
+    void stopAppServer();
     app.quit();
   }
+});
+
+app.on("before-quit", () => {
+  void stopAppServer();
 });
 
 ipcMain.handle("recording:getState", async () => {
