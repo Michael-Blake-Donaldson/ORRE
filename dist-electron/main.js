@@ -33,6 +33,10 @@ const DEFAULT_SETTINGS = {
     ].join("\n"),
     benchmarkLimit: 80,
 };
+const LEGAL_DOCUMENT_VERSIONS = {
+    terms: "2026-03-18.1",
+    privacyPolicy: "2026-03-18.1",
+};
 function normalizeEmail(input) {
     return input.trim().toLowerCase();
 }
@@ -218,6 +222,7 @@ ipcMain.handle("auth:register", async (_event, payload) => {
     const email = normalizeEmail(payload.email ?? "");
     const password = String(payload.password ?? "");
     const displayName = String(payload.displayName ?? "").trim();
+    const acceptedLegal = Boolean(payload.acceptedLegal);
     // Check rate limit before validation
     const registerLimit = rateLimiters.authRegister.check(email);
     if (!registerLimit.isAllowed) {
@@ -232,8 +237,16 @@ ipcMain.handle("auth:register", async (_event, payload) => {
     if (!displayName || displayName.length < 2) {
         return { ok: false, reason: "Display name must be at least 2 characters." };
     }
+    if (!acceptedLegal) {
+        return { ok: false, reason: "You must accept the Terms and Conditions and Privacy Policy." };
+    }
+    const legalAcceptedAt = new Date().toISOString();
     if (isSupabaseAuthConfigured()) {
-        const cloud = await registerWithSupabase(email, password, displayName);
+        const cloud = await registerWithSupabase(email, password, displayName, {
+            acceptedAt: legalAcceptedAt,
+            termsVersion: LEGAL_DOCUMENT_VERSIONS.terms,
+            privacyPolicyVersion: LEGAL_DOCUMENT_VERSIONS.privacyPolicy,
+        });
         if (!cloud.ok) {
             return { ok: false, reason: cloud.reason };
         }
@@ -258,7 +271,7 @@ ipcMain.handle("auth:register", async (_event, payload) => {
     if (store.getUserByEmail(email)) {
         return { ok: false, reason: "An account with this email already exists." };
     }
-    const createdAt = new Date().toISOString();
+    const createdAt = legalAcceptedAt;
     const userId = crypto.randomUUID();
     const passwordData = hashPassword(password);
     store.createUser({
@@ -269,6 +282,18 @@ ipcMain.handle("auth:register", async (_event, payload) => {
         passwordSalt: passwordData.saltHex,
         createdAt,
     });
+    store.recordUserLegalAcceptances(userId, [
+        {
+            documentType: "terms",
+            documentVersion: LEGAL_DOCUMENT_VERSIONS.terms,
+            acceptedAt: legalAcceptedAt,
+        },
+        {
+            documentType: "privacy-policy",
+            documentVersion: LEGAL_DOCUMENT_VERSIONS.privacyPolicy,
+            acceptedAt: legalAcceptedAt,
+        },
+    ]);
     activeUserId = userId;
     activeAuthUser = {
         id: userId,

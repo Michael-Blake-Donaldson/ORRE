@@ -1386,6 +1386,11 @@ ul {
   border-radius: 4px;
 }
 
+.auth-legal-separator {
+  color: #93a9bf;
+  font-size: 13px;
+}
+
 .auth-submit {
   margin-top: 4px;
   width: 100%;

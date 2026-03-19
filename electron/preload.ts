@@ -102,7 +102,7 @@ const api = {
   getCurrentUser: async () => {
     return ipcRenderer.invoke("auth:getCurrentUser") as Promise<AuthUser | null>;
   },
-  registerUser: async (payload: { email: string; password: string; displayName: string }) => {
+  registerUser: async (payload: { email: string; password: string; displayName: string; acceptedLegal: boolean }) => {
     return ipcRenderer.invoke("auth:register", payload) as Promise<
       | { ok: true; user: AuthUser; requiresEmailVerification?: boolean }
       | { ok: false; reason: string }

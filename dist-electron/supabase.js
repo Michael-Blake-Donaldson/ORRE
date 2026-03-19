@@ -44,7 +44,7 @@ function toAuthUser(user) {
         displayName: resolveDisplayName(user),
     };
 }
-export async function registerWithSupabase(email, password, displayName) {
+export async function registerWithSupabase(email, password, displayName, legalAcceptance) {
     const client = getSupabaseClient();
     if (!client) {
         return { ok: false, reason: "Supabase is not configured." };
@@ -55,6 +55,11 @@ export async function registerWithSupabase(email, password, displayName) {
         options: {
             data: {
                 display_name: displayName,
+                legal_acceptance: {
+                    accepted_at: legalAcceptance.acceptedAt,
+                    terms_version: legalAcceptance.termsVersion,
+                    privacy_policy_version: legalAcceptance.privacyPolicyVersion,
+                },
             },
         },
     });

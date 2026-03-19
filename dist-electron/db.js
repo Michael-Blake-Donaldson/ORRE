@@ -83,6 +83,17 @@ export class MemoraStore {
         updated_at TEXT NOT NULL,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       );
+
+      CREATE TABLE IF NOT EXISTS user_legal_acceptances (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        document_type TEXT NOT NULL,
+        document_version TEXT NOT NULL,
+        accepted_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(user_id, document_type, document_version),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
     `);
         this.ensureSessionCategoryColumn();
         this.ensureUserScopedColumns();
@@ -141,6 +152,7 @@ export class MemoraStore {
         this.db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);`);
         this.db.exec(`CREATE INDEX IF NOT EXISTS idx_categories_user_id ON categories(user_id);`);
         this.db.exec(`CREATE INDEX IF NOT EXISTS idx_app_settings_user_key ON app_settings(user_id, key);`);
+        this.db.exec(`CREATE INDEX IF NOT EXISTS idx_user_legal_acceptances_user_id ON user_legal_acceptances(user_id);`);
     }
     createUser(input) {
         this.db
@@ -163,6 +175,23 @@ export class MemoraStore {
     }
     setUserLastLoginAt(userId, timestamp) {
         this.db.prepare(`UPDATE users SET last_login_at = ? WHERE id = ?`).run(timestamp, userId);
+    }
+    recordUserLegalAcceptances(userId, records) {
+        const insert = this.db.prepare(`INSERT OR IGNORE INTO user_legal_acceptances (id, user_id, document_type, document_version, accepted_at, created_at)
+       VALUES (@id, @user_id, @document_type, @document_version, @accepted_at, @created_at)`);
+        const tx = this.db.transaction(() => {
+            for (const record of records) {
+                insert.run({
+                    id: crypto.randomUUID(),
+                    user_id: userId,
+                    document_type: record.documentType,
+                    document_version: record.documentVersion,
+                    accepted_at: record.acceptedAt,
+                    created_at: record.acceptedAt,
+                });
+            }
+        });
+        tx();
     }
     createSession(input) {
         this.db

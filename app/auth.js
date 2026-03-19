@@ -27,6 +27,10 @@ const termsModal = document.getElementById("termsModal");
 const termsOpenBtn = document.getElementById("termsOpenBtn");
 const termsCloseBtn = document.getElementById("termsCloseBtn");
 const termsBackdrop = document.getElementById("termsBackdrop");
+const privacyModal = document.getElementById("privacyModal");
+const privacyOpenBtn = document.getElementById("privacyOpenBtn");
+const privacyCloseBtn = document.getElementById("privacyCloseBtn");
+const privacyBackdrop = document.getElementById("privacyBackdrop");
 
 // Login form fields
 const loginEmail = document.getElementById("loginEmail");
@@ -50,24 +54,27 @@ const mfaSubmitBtn = document.getElementById("mfaSubmitBtn");
 let pendingMfa = null;
 let isSubmitting = false;
 
-function openTermsModal() {
-  if (!termsModal) {
+function openLegalModal(modal) {
+  if (!modal) {
     return;
   }
 
-  termsModal.classList.remove("legal-modal--hidden");
-  termsModal.setAttribute("aria-hidden", "false");
+  modal.classList.remove("legal-modal--hidden");
+  modal.setAttribute("aria-hidden", "false");
   document.body.classList.add("modal-open");
 }
 
-function closeTermsModal() {
-  if (!termsModal) {
+function closeLegalModal(modal) {
+  if (!modal) {
     return;
   }
 
-  termsModal.classList.add("legal-modal--hidden");
-  termsModal.setAttribute("aria-hidden", "true");
-  document.body.classList.remove("modal-open");
+  modal.classList.add("legal-modal--hidden");
+  modal.setAttribute("aria-hidden", "true");
+
+  if (termsModal?.classList.contains("legal-modal--hidden") && privacyModal?.classList.contains("legal-modal--hidden")) {
+    document.body.classList.remove("modal-open");
+  }
 }
 
 function setResendVisibility(visible) {
@@ -200,20 +207,33 @@ registerPassword?.addEventListener("blur", (e) => {
 });
 
 termsOpenBtn?.addEventListener("click", () => {
-  openTermsModal();
+  openLegalModal(termsModal);
 });
 
 termsCloseBtn?.addEventListener("click", () => {
-  closeTermsModal();
+  closeLegalModal(termsModal);
 });
 
 termsBackdrop?.addEventListener("click", () => {
-  closeTermsModal();
+  closeLegalModal(termsModal);
+});
+
+privacyOpenBtn?.addEventListener("click", () => {
+  openLegalModal(privacyModal);
+});
+
+privacyCloseBtn?.addEventListener("click", () => {
+  closeLegalModal(privacyModal);
+});
+
+privacyBackdrop?.addEventListener("click", () => {
+  closeLegalModal(privacyModal);
 });
 
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
-    closeTermsModal();
+    closeLegalModal(termsModal);
+    closeLegalModal(privacyModal);
   }
 });
 
@@ -380,6 +400,7 @@ registerForm?.addEventListener("submit", async (event) => {
       displayName,
       email,
       password,
+      acceptedLegal: Boolean(registerTerms?.checked),
     });
 
     if (!result.ok) {

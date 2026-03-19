@@ -6,6 +6,12 @@ type AuthUser = {
   displayName: string;
 };
 
+type LegalAcceptancePayload = {
+  acceptedAt: string;
+  termsVersion: string;
+  privacyPolicyVersion: string;
+};
+
 type SupabaseRegisterResult =
   | { ok: true; user: AuthUser; requiresEmailVerification: boolean }
   | { ok: false; reason: string };
@@ -97,7 +103,12 @@ function toAuthUser(user: User): AuthUser {
   };
 }
 
-export async function registerWithSupabase(email: string, password: string, displayName: string): Promise<SupabaseRegisterResult> {
+export async function registerWithSupabase(
+  email: string,
+  password: string,
+  displayName: string,
+  legalAcceptance: LegalAcceptancePayload,
+): Promise<SupabaseRegisterResult> {
   const client = getSupabaseClient();
   if (!client) {
     return { ok: false as const, reason: "Supabase is not configured." };
@@ -109,6 +120,11 @@ export async function registerWithSupabase(email: string, password: string, disp
     options: {
       data: {
         display_name: displayName,
+        legal_acceptance: {
+          accepted_at: legalAcceptance.acceptedAt,
+          terms_version: legalAcceptance.termsVersion,
+          privacy_policy_version: legalAcceptance.privacyPolicyVersion,
+        },
       },
     },
   });
