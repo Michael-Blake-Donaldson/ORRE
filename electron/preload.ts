@@ -98,6 +98,16 @@ type AuthUser = {
   displayName: string;
 };
 
+type BillingStatus = {
+  tier: "free" | "premium";
+  status: "inactive" | "active" | "past_due" | "canceled";
+  premiumActive: boolean;
+  cloudReady: boolean;
+  periodKey: string;
+  monthlyTokensUsed: number;
+  monthlyTokenLimit: number;
+};
+
 const api = {
   getCurrentUser: async () => {
     return ipcRenderer.invoke("auth:getCurrentUser") as Promise<AuthUser | null>;
@@ -193,6 +203,15 @@ const api = {
       | { ok: true }
       | { ok: false; reason: string }
     >;
+  },
+  getBillingStatus: async () => {
+    return ipcRenderer.invoke("billing:getStatus") as Promise<BillingStatus>;
+  },
+  startBillingCheckout: async () => {
+    return ipcRenderer.invoke("billing:startCheckout") as Promise<{ ok: true } | { ok: false; reason: string }>;
+  },
+  openBillingPortal: async () => {
+    return ipcRenderer.invoke("billing:openPortal") as Promise<{ ok: true } | { ok: false; reason: string }>;
   },
   getRecordingState: async () => {
     return ipcRenderer.invoke("recording:getState") as Promise<{

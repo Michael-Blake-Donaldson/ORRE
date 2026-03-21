@@ -702,6 +702,22 @@ select:focus-visible,
   padding: 14px;
 }
 
+.subscription-pill {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.subscription-pill--premium {
+  color: #052314;
+  border-color: rgba(0, 229, 195, 0.65);
+  background: linear-gradient(135deg, #00e5c3, #7fffe4);
+}
+
 .settings-card--wide {
   grid-column: 1 / -1;
 }

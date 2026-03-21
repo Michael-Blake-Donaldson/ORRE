@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { app, BrowserWindow, desktopCapturer, ipcMain, session } from "electron";
+import { app, BrowserWindow, desktopCapturer, ipcMain, session, shell } from "electron";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 import { promises as fs } from "node:fs";
@@ -15,14 +15,18 @@ import { createDb, type MemoraStore, type SessionRow } from "./db.js";
 import { ProcessingQueue } from "./processing.js";
 import { buildAskMemoraAnswer } from "./qa.js";
 import { buildSessionSummary } from "./summary.js";
+import { estimateTokensFromText, generateAiAskAnswer, generateAiSessionSummary, isOpenAiConfigured } from "./ai.js";
 import { ensureAppServer, stopAppServer } from "./appServer.js";
 import {
   assignCloudSessionCategory,
   createCloudCategory,
   deleteCloudCategory,
   deleteCloudSession,
+  getCloudAiUsage,
+  getCloudSubscriptionStatus,
   getCloudSessionDetail,
   getCloudSettings,
+  incrementCloudAiUsage,
   listCloudCategories,
   listCloudSessions,
   listCloudSessionsByCategory,
@@ -48,6 +52,9 @@ import {
 import { rateLimiters } from "./rateLimit.js";
 
 type RecordingMode = "idle" | "session" | "clip" | "always-on";
+type SubscriptionTier = "free" | "premium";
+type SubscriptionLifecycle = "inactive" | "active" | "past_due" | "canceled";
+type PremiumFeature = "search" | "ask" | "summary";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -89,6 +96,11 @@ const DEFAULT_SETTINGS: AppSettings = {
     "Summarize the latest decision that was made.",
   ].join("\n"),
   benchmarkLimit: 80,
+};
+
+const MONTHLY_TOKEN_LIMITS: Record<SubscriptionTier, number> = {
+  free: 0,
+  premium: 260_000,
 };
 
 const LEGAL_DOCUMENT_VERSIONS = {
@@ -238,6 +250,126 @@ async function syncSessionToCloud(sessionId: string) {
   }
 
   await syncCloudSessionDetail(detail);
+}
+
+function getBillingPeriodKey(now = new Date()) {
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+}
+
+function isPremiumBypassEnabled() {
+  const raw = (process.env.MEMORA_PREMIUM_BETA ?? "").trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+}
+
+function getFeatureLabel(feature: PremiumFeature) {
+  if (feature === "search") {
+    return "Search Memory";
+  }
+
+  if (feature === "ask") {
+    return "Ask Memora";
+  }
+
+  return "Session Summary";
+}
+
+async function getBillingStatus() {
+  const periodKey = getBillingPeriodKey();
+  const cloudReady = await canUseCloudData();
+
+  if (isPremiumBypassEnabled()) {
+    return {
+      tier: "premium" as SubscriptionTier,
+      status: "active" as SubscriptionLifecycle,
+      premiumActive: true,
+      cloudReady,
+      periodKey,
+      monthlyTokensUsed: cloudReady ? await getCloudAiUsage(periodKey) : 0,
+      monthlyTokenLimit: MONTHLY_TOKEN_LIMITS.premium,
+    };
+  }
+
+  if (!cloudReady) {
+    return {
+      tier: "free" as SubscriptionTier,
+      status: "inactive" as SubscriptionLifecycle,
+      premiumActive: false,
+      cloudReady: false,
+      periodKey,
+      monthlyTokensUsed: 0,
+      monthlyTokenLimit: MONTHLY_TOKEN_LIMITS.free,
+    };
+  }
+
+  const subscription = await getCloudSubscriptionStatus();
+  const premiumActive = subscription.tier === "premium" && (subscription.status === "active" || subscription.status === "past_due");
+  const monthlyTokenLimit = MONTHLY_TOKEN_LIMITS[subscription.tier];
+  const monthlyTokensUsed = await getCloudAiUsage(periodKey);
+
+  return {
+    tier: subscription.tier,
+    status: subscription.status,
+    premiumActive,
+    cloudReady,
+    periodKey,
+    monthlyTokensUsed,
+    monthlyTokenLimit,
+  };
+}
+
+async function requirePremiumFeature(feature: PremiumFeature) {
+  const billing = await getBillingStatus();
+  if (billing.premiumActive) {
+    return { ok: true as const, billing };
+  }
+
+  return {
+    ok: false as const,
+    reason: `premium-required:${getFeatureLabel(feature)} is available with Memora Premium.`,
+    billing,
+  };
+}
+
+async function enforceAiTokenBudget(estimatedTokens: number) {
+  const billing = await getBillingStatus();
+  const safeEstimate = Math.max(1, Math.floor(estimatedTokens));
+
+  if (!billing.premiumActive) {
+    return {
+      ok: false as const,
+      reason: "premium-required:This AI feature requires Memora Premium.",
+      billing,
+    };
+  }
+
+  if (billing.monthlyTokenLimit <= 0 || billing.monthlyTokensUsed + safeEstimate > billing.monthlyTokenLimit) {
+    return {
+      ok: false as const,
+      reason: `monthly-token-limit:Monthly AI budget reached (${billing.monthlyTokensUsed}/${billing.monthlyTokenLimit} tokens).`,
+      billing,
+    };
+  }
+
+  return {
+    ok: true as const,
+    billing,
+  };
+}
+
+async function recordAiUsageTokens(tokens: number) {
+  const cloudReady = await canUseCloudData();
+  if (!cloudReady) {
+    return;
+  }
+
+  const safeTokens = Math.max(0, Math.floor(tokens));
+  if (!safeTokens) {
+    return;
+  }
+
+  await incrementCloudAiUsage(getBillingPeriodKey(), safeTokens);
 }
 
 function parseSettings(raw: Record<string, unknown>): AppSettings {
@@ -1305,6 +1437,40 @@ ipcMain.handle("settings:update", async (_event, updates: Partial<AppSettings>) 
   return { ok: true, settings: next };
 });
 
+ipcMain.handle("billing:getStatus", async () => {
+  return getBillingStatus();
+});
+
+ipcMain.handle("billing:startCheckout", async () => {
+  const gate = await canUseCloudData();
+  if (!gate) {
+    return { ok: false as const, reason: "Sign in with cloud auth to start checkout." };
+  }
+
+  const checkoutUrl = process.env.STRIPE_PREMIUM_CHECKOUT_URL?.trim();
+  if (!checkoutUrl) {
+    return { ok: false as const, reason: "Stripe checkout URL is not configured." };
+  }
+
+  await shell.openExternal(checkoutUrl);
+  return { ok: true as const };
+});
+
+ipcMain.handle("billing:openPortal", async () => {
+  const gate = await canUseCloudData();
+  if (!gate) {
+    return { ok: false as const, reason: "Sign in with cloud auth to manage billing." };
+  }
+
+  const portalUrl = process.env.STRIPE_CUSTOMER_PORTAL_URL?.trim();
+  if (!portalUrl) {
+    return { ok: false as const, reason: "Stripe customer portal URL is not configured." };
+  }
+
+  await shell.openExternal(portalUrl);
+  return { ok: true as const };
+});
+
 ipcMain.handle("benchmark:run", async (_event, payload: { questions: string[]; limit: number }) => {
   const userId = getActiveUserId();
   if (!userId) {
@@ -1429,6 +1595,11 @@ ipcMain.handle("search:content", async (_event, payload: { query: string; limit?
     return [];
   }
 
+  const premium = await requirePremiumFeature("search");
+  if (!premium.ok) {
+    throw new Error(premium.reason);
+  }
+
   if (await canUseCloudData()) {
     return searchCloudExtractedContent(payload.query, payload.limit ?? 25);
   }
@@ -1440,6 +1611,11 @@ ipcMain.handle("ask:query", async (_event, payload: { question: string; limit?: 
   const userId = getActiveUserId();
   if (!userId) {
     return buildAskMemoraAnswer(payload.question, []);
+  }
+
+  const premium = await requirePremiumFeature("ask");
+  if (!premium.ok) {
+    throw new Error(premium.reason);
   }
 
   if (await canUseCloudData()) {
@@ -1454,7 +1630,32 @@ ipcMain.handle("ask:query", async (_event, payload: { question: string; limit?: 
       }
     }
 
-    return buildAskMemoraAnswer(payload.question, [...mergedMap.values()]);
+    const fallbackResult = buildAskMemoraAnswer(payload.question, [...mergedMap.values()]);
+
+    if (!isOpenAiConfigured()) {
+      return fallbackResult;
+    }
+
+    const estimatedTokens =
+      estimateTokensFromText(payload.question) +
+      estimateTokensFromText(fallbackResult.citations.map((citation) => citation.content).join("\n")) +
+      220;
+
+    const budget = await enforceAiTokenBudget(estimatedTokens);
+    if (!budget.ok) {
+      throw new Error(budget.reason);
+    }
+
+    try {
+      const aiResult = await generateAiAskAnswer(payload.question, fallbackResult.citations, 520);
+      await recordAiUsageTokens(aiResult.usageTokens);
+      return {
+        ...fallbackResult,
+        answer: aiResult.content,
+      };
+    } catch {
+      return fallbackResult;
+    }
   }
 
   const primaryRows = store.searchExtractedContent(userId, payload.question, payload.limit ?? 80);
@@ -1469,8 +1670,32 @@ ipcMain.handle("ask:query", async (_event, payload: { question: string; limit?: 
   }
 
   const merged = [...mergedMap.values()];
+  const fallbackResult = buildAskMemoraAnswer(payload.question, merged);
 
-  return buildAskMemoraAnswer(payload.question, merged);
+  if (!isOpenAiConfigured()) {
+    return fallbackResult;
+  }
+
+  const estimatedTokens =
+    estimateTokensFromText(payload.question) +
+    estimateTokensFromText(fallbackResult.citations.map((citation) => citation.content).join("\n")) +
+    220;
+
+  const budget = await enforceAiTokenBudget(estimatedTokens);
+  if (!budget.ok) {
+    throw new Error(budget.reason);
+  }
+
+  try {
+    const aiResult = await generateAiAskAnswer(payload.question, fallbackResult.citations, 520);
+    await recordAiUsageTokens(aiResult.usageTokens);
+    return {
+      ...fallbackResult,
+      answer: aiResult.content,
+    };
+  } catch {
+    return fallbackResult;
+  }
 });
 
 ipcMain.handle("sessions:generateSummary", async (_event, sessionId: string) => {
@@ -1479,14 +1704,55 @@ ipcMain.handle("sessions:generateSummary", async (_event, sessionId: string) => 
     return buildSessionSummary([]);
   }
 
+  const premium = await requirePremiumFeature("summary");
+  if (!premium.ok) {
+    throw new Error(premium.reason);
+  }
+
   if (await canUseCloudData()) {
     const detail = await getCloudSessionDetail(sessionId);
-    return buildSessionSummary(detail?.chunks ?? []);
+    const chunks = detail?.chunks ?? [];
+    const fallback = buildSessionSummary(chunks);
+
+    if (!isOpenAiConfigured() || chunks.length === 0) {
+      return fallback;
+    }
+
+    const estimatedTokens = estimateTokensFromText(chunks.map((chunk) => chunk.content).join("\n")) + 340;
+    const budget = await enforceAiTokenBudget(estimatedTokens);
+    if (!budget.ok) {
+      throw new Error(budget.reason);
+    }
+
+    try {
+      const aiSummary = await generateAiSessionSummary(chunks, 650);
+      await recordAiUsageTokens(aiSummary.usageTokens);
+      return aiSummary.summary;
+    } catch {
+      return fallback;
+    }
   }
 
   const detail = store.getSessionDetail(userId, sessionId);
-  const summary = buildSessionSummary(detail.chunks);
-  return summary;
+  const fallback = buildSessionSummary(detail.chunks);
+
+  if (!isOpenAiConfigured() || detail.chunks.length === 0) {
+    return fallback;
+  }
+
+  const estimatedTokens = estimateTokensFromText(detail.chunks.map((chunk) => chunk.content).join("\n")) + 340;
+  const budget = await enforceAiTokenBudget(estimatedTokens);
+  if (!budget.ok) {
+    throw new Error(budget.reason);
+  }
+
+  try {
+    const aiSummary = await generateAiSessionSummary(detail.chunks, 650);
+    await recordAiUsageTokens(aiSummary.usageTokens);
+    return aiSummary.summary;
+  } catch {
+    return fallback;
+  }
 });
 
 ipcMain.handle("sessions:getReplaySource", async (_event, sessionId: string) => {

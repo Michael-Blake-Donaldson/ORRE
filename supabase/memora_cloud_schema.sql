@@ -53,18 +53,44 @@ create table if not exists public.memora_user_settings (
   primary key (user_id, key)
 );
 
+create table if not exists public.memora_subscriptions (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  tier text not null default 'free',
+  status text not null default 'inactive',
+  stripe_customer_id text,
+  stripe_subscription_id text,
+  current_period_end timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint memora_subscriptions_tier_check check (tier in ('free', 'premium')),
+  constraint memora_subscriptions_status_check check (status in ('inactive', 'active', 'past_due', 'canceled'))
+);
+
+create table if not exists public.memora_ai_usage (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  period_key text not null,
+  total_tokens integer not null default 0,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, period_key),
+  constraint memora_ai_usage_total_tokens_check check (total_tokens >= 0)
+);
+
 create index if not exists idx_memora_categories_user_id on public.memora_categories(user_id);
 create index if not exists idx_memora_sessions_user_id on public.memora_sessions(user_id);
 create index if not exists idx_memora_sessions_category_id on public.memora_sessions(category_id);
 create index if not exists idx_memora_processing_jobs_session_id on public.memora_processing_jobs(session_id);
 create index if not exists idx_memora_extracted_chunks_session_id on public.memora_extracted_chunks(session_id);
 create index if not exists idx_memora_extracted_chunks_user_id on public.memora_extracted_chunks(user_id);
+create index if not exists idx_memora_subscriptions_status on public.memora_subscriptions(status);
+create index if not exists idx_memora_ai_usage_period_key on public.memora_ai_usage(period_key);
 
 alter table public.memora_categories enable row level security;
 alter table public.memora_sessions enable row level security;
 alter table public.memora_processing_jobs enable row level security;
 alter table public.memora_extracted_chunks enable row level security;
 alter table public.memora_user_settings enable row level security;
+alter table public.memora_subscriptions enable row level security;
+alter table public.memora_ai_usage enable row level security;
 
 create policy if not exists "memora_categories_select_own" on public.memora_categories
 for select using (auth.uid() = user_id);
@@ -124,4 +150,28 @@ create policy if not exists "memora_user_settings_update_own" on public.memora_u
 for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 create policy if not exists "memora_user_settings_delete_own" on public.memora_user_settings
+for delete using (auth.uid() = user_id);
+
+create policy if not exists "memora_subscriptions_select_own" on public.memora_subscriptions
+for select using (auth.uid() = user_id);
+
+create policy if not exists "memora_subscriptions_insert_own" on public.memora_subscriptions
+for insert with check (auth.uid() = user_id);
+
+create policy if not exists "memora_subscriptions_update_own" on public.memora_subscriptions
+for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create policy if not exists "memora_subscriptions_delete_own" on public.memora_subscriptions
+for delete using (auth.uid() = user_id);
+
+create policy if not exists "memora_ai_usage_select_own" on public.memora_ai_usage
+for select using (auth.uid() = user_id);
+
+create policy if not exists "memora_ai_usage_insert_own" on public.memora_ai_usage
+for insert with check (auth.uid() = user_id);
+
+create policy if not exists "memora_ai_usage_update_own" on public.memora_ai_usage
+for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create policy if not exists "memora_ai_usage_delete_own" on public.memora_ai_usage
 for delete using (auth.uid() = user_id);

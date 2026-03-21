@@ -27,6 +27,12 @@ const revokeSessionsBtn = document.getElementById("revokeSessionsBtn");
 const revokeSessionsStatus = document.getElementById("revokeSessionsStatus");
 const reauthSecurityBtn = document.getElementById("reauthSecurityBtn");
 const reauthSecurityStatus = document.getElementById("reauthSecurityStatus");
+const subscriptionTierBadge = document.getElementById("subscriptionTierBadge");
+const subscriptionStatusText = document.getElementById("subscriptionStatusText");
+const subscriptionUsageText = document.getElementById("subscriptionUsageText");
+const startCheckoutBtn = document.getElementById("startCheckoutBtn");
+const manageBillingBtn = document.getElementById("manageBillingBtn");
+const refreshBillingBtn = document.getElementById("refreshBillingBtn");
 
 const DEFAULT_SETTINGS = {
   defaultMode: "session",
@@ -318,6 +324,64 @@ function setStatus(text) {
   if (settingsStatus) {
     settingsStatus.textContent = text;
   }
+}
+
+function renderBillingStatus(status) {
+  if (!subscriptionTierBadge || !subscriptionStatusText || !subscriptionUsageText) {
+    return;
+  }
+
+  const isPremium = status?.premiumActive;
+  subscriptionTierBadge.textContent = isPremium ? "PREMIUM" : "FREE";
+  subscriptionTierBadge.classList.toggle("subscription-pill--premium", Boolean(isPremium));
+
+  const lifecycle = status?.status ?? "inactive";
+  const cloudState = status?.cloudReady ? "Cloud auth connected." : "Cloud auth required for premium features.";
+  subscriptionStatusText.textContent = `Plan: ${status?.tier ?? "free"} • Billing status: ${lifecycle}. ${cloudState}`;
+
+  const used = Number(status?.monthlyTokensUsed ?? 0).toLocaleString();
+  const limit = Number(status?.monthlyTokenLimit ?? 0).toLocaleString();
+  subscriptionUsageText.textContent = `Monthly AI token usage: ${used} / ${limit}`;
+}
+
+async function loadBillingStatus() {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
+  const status = await api.getBillingStatus();
+  renderBillingStatus(status);
+}
+
+async function startCheckoutFlow() {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
+  const response = await api.startBillingCheckout();
+  if (!response.ok) {
+    setStatus(response.reason || "Could not open checkout.");
+    return;
+  }
+
+  setStatus("Stripe checkout opened in your browser.");
+}
+
+async function openBillingPortalFlow() {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
+  const response = await api.openBillingPortal();
+  if (!response.ok) {
+    setStatus(response.reason || "Could not open billing portal.");
+    return;
+  }
+
+  setStatus("Stripe billing portal opened in your browser.");
 }
 
 function persistPermissionState(key, state) {
@@ -630,6 +694,21 @@ reauthSecurityBtn?.addEventListener("click", () => {
   startSecurityReauth();
 });
 
+startCheckoutBtn?.addEventListener("click", async () => {
+  await startCheckoutFlow();
+  await loadBillingStatus();
+});
+
+manageBillingBtn?.addEventListener("click", async () => {
+  await openBillingPortalFlow();
+  await loadBillingStatus();
+});
+
+refreshBillingBtn?.addEventListener("click", async () => {
+  await loadBillingStatus();
+  setStatus("Billing status refreshed.");
+});
+
 setupNavigation();
 setupBackToTop();
 refreshPermissionUI();
@@ -647,6 +726,11 @@ ensureAuthenticated()
 
     loadMfaStatus().catch((error) => {
       setMfaStatus("Could not load MFA status.");
+      console.error(error);
+    });
+
+    loadBillingStatus().catch((error) => {
+      setStatus("Could not load billing status.");
       console.error(error);
     });
 

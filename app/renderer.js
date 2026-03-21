@@ -1034,6 +1034,24 @@ function renderSearchResults(rows) {
   });
 }
 
+function isPremiumError(error) {
+  const message = String(error?.message ?? "").toLowerCase();
+  return message.includes("premium-required") || message.includes("monthly-token-limit");
+}
+
+function buildFriendlyPremiumMessage(error, featureLabel) {
+  const message = String(error?.message ?? "");
+  if (message.includes("monthly-token-limit")) {
+    return "Your monthly AI token budget is exhausted. Upgrade your plan or wait for next billing period.";
+  }
+
+  if (message.includes("premium-required")) {
+    return `${featureLabel} is part of Memora Premium. Open Settings to upgrade.`;
+  }
+
+  return `${featureLabel} is currently unavailable.`;
+}
+
 async function runSearch() {
   const api = getMemoraApi();
   if (!api) {
@@ -1050,8 +1068,18 @@ async function runSearch() {
     return;
   }
 
-  const rows = await api.searchContent(query, 25);
-  renderSearchResults(rows);
+  try {
+    const rows = await api.searchContent(query, 25);
+    renderSearchResults(rows);
+  } catch (error) {
+    if (isPremiumError(error)) {
+      searchResults.innerHTML = `<li>${buildFriendlyPremiumMessage(error, "Search Memory")}</li>`;
+      statusText.textContent = "Premium upgrade required for Search Memory.";
+      return;
+    }
+
+    searchResults.innerHTML = "<li>Search failed. Try again.</li>";
+  }
 }
 
 async function loadReplayForSession(sessionId, timestampSeconds = null) {
@@ -1165,7 +1193,17 @@ async function runAskMemora() {
     askAnswer.textContent = result.answer;
     renderAskConfidence(result.confidenceLabel, result.confidenceScore);
     renderAskCitations(result.citations);
-  } catch {
+  } catch (error) {
+    if (isPremiumError(error)) {
+      askAnswer.textContent = buildFriendlyPremiumMessage(error, "Ask Memora");
+      renderAskConfidence("low", 0);
+      if (askCitations) {
+        askCitations.innerHTML = "<li>Upgrade in Settings to unlock Ask Memora.</li>";
+      }
+      statusText.textContent = "Premium upgrade required for Ask Memora.";
+      return;
+    }
+
     askAnswer.textContent = "Ask Memora failed. Try again.";
     renderAskConfidence("low", 0);
     if (askCitations) {
@@ -1900,6 +1938,12 @@ generateSummaryBtn.addEventListener("click", async () => {
       actionItemsText,
     ].join("\n");
   } catch (error) {
+    if (isPremiumError(error)) {
+      sessionSummary.textContent = buildFriendlyPremiumMessage(error, "Session Summary");
+      statusText.textContent = "Premium upgrade required for Session Summary.";
+      return;
+    }
+
     sessionSummary.textContent = "Failed to generate summary for this session.";
     diagnostics.lastCaptureError = error?.name ?? "summary-failed";
     refreshDiagnosticsUI();
