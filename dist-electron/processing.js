@@ -3,17 +3,20 @@ import { cleanupExtractedFrames, extractFramesFromVideo, runOcrOnFrames } from "
 import { buildTranscriptFromOcr } from "./transcript.js";
 export class ProcessingQueue {
     store;
+    onSessionUpdated;
     queue = [];
     activeSessions = new Set();
     isRunning = false;
-    constructor(store) {
+    constructor(store, onSessionUpdated) {
         this.store = store;
+        this.onSessionUpdated = onSessionUpdated;
     }
     enqueue(task) {
         if (this.activeSessions.has(task.sessionId) || this.queue.some((item) => item.sessionId === task.sessionId)) {
             return false;
         }
         this.store.queueProcessingJobs(task.sessionId);
+        void this.onSessionUpdated?.(task.sessionId);
         this.queue.push(task);
         this.activeSessions.add(task.sessionId);
         void this.processNext();
@@ -55,9 +58,11 @@ export class ProcessingQueue {
                         },
                     ];
                     this.store.replaceExtractedChunks(task.sessionId, "ocr", latestOcrChunks);
+                    void this.onSessionUpdated?.(task.sessionId);
                     return;
                 }
                 this.store.replaceExtractedChunks(task.sessionId, "ocr", ocrChunks);
+                void this.onSessionUpdated?.(task.sessionId);
             }
             finally {
                 await cleanupExtractedFrames(framePaths);
@@ -80,9 +85,11 @@ export class ProcessingQueue {
                         confidence: 0.35,
                     },
                 ]);
+                void this.onSessionUpdated?.(task.sessionId);
                 return;
             }
             this.store.replaceExtractedChunks(task.sessionId, "transcript", combinedTranscriptChunks);
+            void this.onSessionUpdated?.(task.sessionId);
         });
     }
     async runSingleJob(sessionId, jobType, callback) {
@@ -92,6 +99,7 @@ export class ProcessingQueue {
             status: "running",
             startedAt: new Date().toISOString(),
         });
+        void this.onSessionUpdated?.(sessionId);
         try {
             await new Promise((resolve) => setTimeout(resolve, 500));
             await callback();
@@ -101,6 +109,7 @@ export class ProcessingQueue {
                 status: "completed",
                 finishedAt: new Date().toISOString(),
             });
+            void this.onSessionUpdated?.(sessionId);
         }
         catch (error) {
             this.store.updateProcessingJob({
@@ -110,6 +119,7 @@ export class ProcessingQueue {
                 errorMessage: error instanceof Error ? error.message : "Unknown processing failure",
                 finishedAt: new Date().toISOString(),
             });
+            void this.onSessionUpdated?.(sessionId);
         }
     }
 }

@@ -1,5 +1,56 @@
 import { contextBridge, ipcRenderer } from "electron";
 const api = {
+    getCurrentUser: async () => {
+        return ipcRenderer.invoke("auth:getCurrentUser");
+    },
+    getAuthSessionContext: async () => {
+        return ipcRenderer.invoke("auth:getSessionContext");
+    },
+    registerUser: async (payload) => {
+        return ipcRenderer.invoke("auth:register", payload);
+    },
+    loginUser: async (payload) => {
+        return ipcRenderer.invoke("auth:login", payload);
+    },
+    passkeyBeginRegistration: async () => {
+        return ipcRenderer.invoke("auth:passkeyBeginRegistration");
+    },
+    passkeyFinishRegistration: async (payload) => {
+        return ipcRenderer.invoke("auth:passkeyFinishRegistration", payload);
+    },
+    passkeyBeginLogin: async (payload) => {
+        return ipcRenderer.invoke("auth:passkeyBeginLogin", payload);
+    },
+    passkeyFinishLogin: async (payload) => {
+        return ipcRenderer.invoke("auth:passkeyFinishLogin", payload);
+    },
+    verifyMfaLogin: async (payload) => {
+        return ipcRenderer.invoke("auth:verifyMfa", payload);
+    },
+    resendVerificationEmail: async (payload) => {
+        return ipcRenderer.invoke("auth:resendVerification", payload);
+    },
+    requestPasswordReset: async (payload) => {
+        return ipcRenderer.invoke("auth:forgotPassword", payload);
+    },
+    getMfaStatus: async () => {
+        return ipcRenderer.invoke("auth:getMfaStatus");
+    },
+    beginMfaEnrollment: async (payload) => {
+        return ipcRenderer.invoke("auth:beginMfaEnrollment", payload);
+    },
+    verifyMfaEnrollment: async (payload) => {
+        return ipcRenderer.invoke("auth:verifyMfaEnrollment", payload);
+    },
+    disableMfa: async (payload) => {
+        return ipcRenderer.invoke("auth:disableMfa", payload);
+    },
+    logoutUser: async () => {
+        return ipcRenderer.invoke("auth:logout");
+    },
+    logoutAllDevices: async () => {
+        return ipcRenderer.invoke("auth:logoutAllDevices");
+    },
     getRecordingState: async () => {
         return ipcRenderer.invoke("recording:getState");
     },

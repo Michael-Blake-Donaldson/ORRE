@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob: file: data:; connect-src 'self';" />
+    <title>Memora Login</title>
+    <link rel="icon" type="image/png" href="./assets/memora-logo.png" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="auth-preload">
+    <div id="authPreloader" class="auth-preloader" aria-hidden="true">
+      <div class="auth-preloader__inner">
+        <div class="auth-preloader__graphic-wrap" aria-hidden="true">
+          <img class="auth-preloader__graphic" src="./assets/auth-loader.svg" alt="" />
+        </div>
+        <p id="authPreloaderText" class="auth-preloader__text">Warming up your secure workspace...</p>
+        <p id="authPreloaderSubtext" class="auth-preloader__subtext">Initializing secure services...</p>
+      </div>
+    </div>
+
+    <main id="authShell" class="auth-shell auth-shell--hidden">
+      <section class="auth-card auth-card--split">
+        <aside class="auth-visual">
+          <div class="auth-visual__chrome">
+            <div class="brand-lockup auth-visual__brand">
+              <img class="brand-logo" src="./assets/memora-logo.png" alt="Memora logo" />
+              <div class="brand">Memora</div>
+            </div>
+            <button class="auth-visual__pill" type="button" disabled>Desktop Native</button>
+          </div>
+          <div class="auth-visual__image" role="img" aria-label="Decorative visual placeholder"></div>
+          <div class="auth-visual__caption">Capturing Moments, Creating Memories</div>
+          <div class="auth-visual__dots" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span class="is-active"></span>
+          </div>
+        </aside>
+
+        <section class="auth-pane">
+          <h1 id="authTitle" class="auth-title">Create an account</h1>
+          <p class="auth-copy">Your sessions, categories, and settings stay private to your account.</p>
+
+          <p class="auth-switchline">
+            <span id="authSwitchPrompt">Already have an account?</span>
+            <button id="switchInlineBtn" class="auth-link-btn" type="button">Log in</button>
+          </p>
+
+          <form id="registerForm" class="auth-form">
+            <div class="auth-name-row">
+              <div class="auth-field">
+                <input id="registerFirstName" type="text" autocomplete="given-name" placeholder="First name" required />
+                <span class="auth-error" id="registerFirstNameError"></span>
+              </div>
+              <div class="auth-field">
+                <input id="registerLastName" type="text" autocomplete="family-name" placeholder="Last name" required />
+                <span class="auth-error" id="registerLastNameError"></span>
+              </div>
+            </div>
+            <div class="auth-field">
+              <input id="registerEmail" type="email" autocomplete="username" placeholder="Email" required />
+              <span class="auth-error" id="registerEmailError"></span>
+            </div>
+            <div class="auth-field">
+              <div class="auth-password-wrapper">
+                <input id="registerPassword" type="password" autocomplete="new-password" minlength="8" placeholder="Create password" required />
+                <button id="registerPasswordToggle" class="auth-password-toggle" type="button" aria-label="Show password">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                </button>
+              </div>
+              <div class="auth-strength-meter">
+                <div class="auth-strength-bar" id="registerPasswordStrength"></div>
+              </div>
+              <span class="auth-strength-text" id="registerPasswordStrengthText"></span>
+              <span class="auth-error" id="registerPasswordError"></span>
+            </div>
+            <div class="auth-legal-row">
+              <label class="auth-checkbox" for="registerTerms">
+                <input id="registerTerms" type="checkbox" required />
+                <span>I agree to the</span>
+              </label>
+              <button id="termsOpenBtn" class="auth-legal-link" type="button">Terms and Conditions</button>
+              <span class="auth-legal-separator">and</span>
+              <button id="privacyOpenBtn" class="auth-legal-link" type="button">Privacy Policy</button>
+            </div>
+            <label class="auth-checkbox" for="registerEnablePasskey">
+              <input id="registerEnablePasskey" type="checkbox" checked />
+              <span>Enable Windows Hello on this device after account setup</span>
+            </label>
+            <button class="button button--primary auth-submit" type="submit" id="registerSubmitBtn">Create Account</button>
+          </form>
+
+          <form id="loginForm" class="auth-form auth-form--hidden">
+            <div class="auth-field">
+              <input id="loginEmail" type="email" autocomplete="username" placeholder="Email" required />
+              <span class="auth-error" id="loginEmailError"></span>
+            </div>
+            <div class="auth-field">
+              <div class="auth-password-wrapper">
+                <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Enter your password" required />
+                <button id="loginPasswordToggle" class="auth-password-toggle" type="button" aria-label="Show password">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                </button>
+              </div>
+              <span class="auth-error" id="loginPasswordError"></span>
+            </div>
+            <label class="auth-checkbox">
+              <input id="loginRememberMe" type="checkbox" />
+              <span>Keep me signed in for 30 days</span>
+            </label>
+            <button class="button auth-passkey-btn" type="button" id="passkeyLoginBtn">Sign in with Windows Hello</button>
+            <p id="passkeyHint" class="auth-passkey-hint">Use fingerprint, face, or PIN on this device.</p>
+            <button class="button button--primary auth-submit" type="submit" id="loginSubmitBtn">Login</button>
+            <button id="forgotPasswordBtn" class="auth-link-btn auth-link-btn--left auth-form__helper" type="button">
+              Forgot password?
+            </button>
+            <button id="resendVerificationBtn" class="auth-link-btn auth-link-btn--left auth-form__helper auth-form__helper--hidden" type="button">
+              Resend verification email
+            </button>
+          </form>
+
+          <form id="mfaForm" class="auth-form auth-form--hidden">
+            <div class="auth-field">
+              <input id="mfaCode" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="Enter 6-digit verification code" minlength="6" maxlength="8" required />
+              <span class="auth-error" id="mfaCodeError"></span>
+            </div>
+            <button class="button button--primary auth-submit" type="submit" id="mfaSubmitBtn">Verify Code</button>
+            <button id="mfaBackBtn" class="auth-link-btn auth-link-btn--left auth-form__helper" type="button">Back to login</button>
+          </form>
+
+          <p id="authStatus" class="status auth-status">Ready.</p>
+        </section>
+      </section>
+    </main>
+
+    <div id="termsModal" class="legal-modal legal-modal--hidden" aria-hidden="true">
+      <div id="termsBackdrop" class="legal-modal__backdrop"></div>
+      <section class="legal-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="termsTitle">
+        <div class="legal-modal__header">
+          <div>
+            <p class="legal-modal__eyebrow">Memora Legal</p>
+            <h2 id="termsTitle" class="legal-modal__title">Terms and Conditions</h2>
+          </div>
+          <button id="termsCloseBtn" class="legal-modal__close" type="button" aria-label="Close terms and conditions">Close</button>
+        </div>
+
+        <div class="legal-modal__body">
+          <p>
+            These Terms and Conditions govern your use of Memora, including the desktop application, cloud synchronization,
+            and related services. By creating an account or using Memora, you agree to these terms.
+          </p>
+
+          <section class="legal-modal__section">
+            <h3>1. Eligibility and Account Use</h3>
+            <p>
+              You must provide accurate information when registering, keep your credentials confidential, and use the account
+              only for lawful personal or authorized business purposes. You are responsible for activity that occurs under your account.
+            </p>
+          </section>
+
+          <section class="legal-modal__section">
+            <h3>2. Your Content and Privacy</h3>
+            <p>
+              Memora may store recordings, transcripts, screenshots, summaries, prompts, preferences, and related metadata that you choose
+              to create or sync. You retain ownership of your content. You confirm that you have the rights and permissions required to capture,
+              upload, and process that content.
+            </p>
+          </section>
+
+          <section class="legal-modal__section">
+            <h3>3. Acceptable Use</h3>
+            <p>
+              You may not use Memora to violate law, infringe privacy rights, capture restricted information without permission, interfere with
+              the service, attempt unauthorized access, or overload the platform through abusive automation or malicious traffic.
+            </p>
+          </section>
+
+          <section class="legal-modal__section">
+            <h3>4. Security</h3>
+            <p>
+              You agree to maintain a strong password, enable multi-factor authentication where offered, and promptly notify us if you suspect
+              unauthorized access. We may suspend access when necessary to protect users, data, or system integrity.
+            </p>
+          </section>
+
+          <section class="legal-modal__section">
+            <h3>5. Service Availability</h3>
+            <p>
+              We may modify, improve, suspend, or discontinue features at any time. While we aim for reliable access, Memora is provided on an
+              as-available basis and may occasionally be unavailable for maintenance, updates, or third-party outages.
+            </p>
+          </section>
+
+          <section class="legal-modal__section">
+            <h3>6. Data Loss and Backups</h3>
+            <p>
+              You are responsible for maintaining any backups you require. We are not responsible for losses caused by device failure, accidental
+              deletion, third-party downtime, or misuse of the application.
+            </p>
+          </section>
+
+          <section class="legal-modal__section">
+            <h3>7. Termination</h3>
+            <p>
+              You may stop using Memora at any time. We may restrict or terminate access if you violate these terms, create security risk,
+              or misuse the service in a way that harms other users or the platform.
+            </p>
+          </section>
+
+          <section class="legal-modal__section">
+            <h3>8. Changes to These Terms</h3>
+            <p>
+              We may update these Terms and Conditions from time to time. Continued use of Memora after an update means you accept the revised terms.
+            </p>
+          </section>
+
+          <p class="legal-modal__footnote">Version 2026-03-18.1 • Last updated: March 18, 2026</p>
+        </div>
+      </section>
+    </div>
+
+    <div id="privacyModal" class="legal-modal legal-modal--hidden" aria-hidden="true">
+      <div id="privacyBackdrop" class="legal-modal__backdrop"></div>
+      <section class="legal-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="privacyTitle">
+        <div class="legal-modal__header">
+          <div>
+            <p class="legal-modal__eyebrow">Memora Legal</p>
+            <h2 id="privacyTitle" class="legal-modal__title">Privacy Policy</h2>
+          </div>
+          <button id="privacyCloseBtn" class="legal-modal__close" type="button" aria-label="Close privacy policy">Close</button>
+        </div>
+
+        <div class="legal-modal__body">
+          <p>
+            This Privacy Policy explains how Memora collects, uses, stores, and protects the information you provide when using the desktop app,
+            synchronization services, and related account features.
+          </p>
+
+          <section class="legal-modal__section">
+            <h3>1. Information We Collect</h3>
+            <p>
+              We may collect account details such as your name and email address, authentication and device metadata, application settings,
+              transcripts, captures, recordings, summaries, prompts, and other content that you choose to store or sync through Memora.
+            </p>
+          </section>
+
+          <section class="legal-modal__section">
+            <h3>2. How We Use Information</h3>
+            <p>
+              We use your information to provide authentication, sync your content, personalize your workspace, improve reliability,
+              investigate abuse, maintain security, and support features such as transcription, search, playback, and summaries.
+            </p>
+          </section>
+
+          <section class="legal-modal__section">
+            <h3>3. Content Responsibility</h3>
+            <p>
+              You control the content you create and sync. You are responsible for making sure you have legal authority and consent to record,
+              capture, or upload content that may contain personal, confidential, or regulated information.
+            </p>
+          </section>
+
+          <section class="legal-modal__section">
+            <h3>4. Sharing and Disclosure</h3>
+            <p>
+              We do not sell your personal data. We may share limited information with service providers that help us deliver authentication,
+              hosting, storage, and security functions, or when disclosure is required by law or necessary to protect users and the service.
+            </p>
+          </section>
+
+          <section class="legal-modal__section">
+            <h3>5. Retention and Deletion</h3>
+            <p>
+              We retain account and synced data for as long as needed to operate the service or until you delete it, subject to legitimate
+              security, fraud-prevention, backup, and legal retention requirements.
+            </p>
+          </section>
+
+          <section class="legal-modal__section">
+            <h3>6. Security Measures</h3>
+            <p>
+              We use commercially reasonable safeguards to protect account data, including authentication controls, transport security,
+              and monitoring for abuse. No storage or transmission method is guaranteed to be perfectly secure.
+            </p>
+          </section>
+
+          <section class="legal-modal__section">
+            <h3>7. Your Choices</h3>
+            <p>
+              You may update your profile information, change settings, enable or disable available security features, and request deletion of
+              synced content you control through the app experience or support workflow where applicable.
+            </p>
+          </section>
+
+          <section class="legal-modal__section">
+            <h3>8. Policy Updates</h3>
+            <p>
+              We may update this Privacy Policy to reflect product, legal, or security changes. Continued use of Memora after a revision means
+              you accept the updated policy.
+            </p>
+          </section>
+
+          <p class="legal-modal__footnote">Version 2026-03-18.1 • Last updated: March 18, 2026</p>
+        </div>
+      </section>
+    </div>
+
+    <div id="forgotModal" class="legal-modal legal-modal--hidden" aria-hidden="true">
+      <div id="forgotBackdrop" class="legal-modal__backdrop"></div>
+      <section class="legal-modal__dialog legal-modal__dialog--compact" role="dialog" aria-modal="true" aria-labelledby="forgotTitle">
+        <div class="legal-modal__header">
+          <div>
+            <p class="legal-modal__eyebrow">Account Recovery</p>
+            <h2 id="forgotTitle" class="legal-modal__title">Reset your password</h2>
+          </div>
+          <button id="forgotCloseBtn" class="legal-modal__close" type="button" aria-label="Close password reset">Close</button>
+        </div>
+
+        <form id="forgotForm" class="legal-modal__body legal-modal__body--form">
+          <p>Enter your account email and we will send password reset instructions.</p>
+          <input id="forgotEmail" type="email" autocomplete="email" placeholder="Email address" required />
+          <p id="forgotStatus" class="auth-status auth-status--compact"></p>
+          <button id="forgotSubmitBtn" class="button button--primary auth-submit" type="submit">Send reset email</button>
+        </form>
+      </section>
+    </div>
+
+    <script type="module" src="./auth.js"></script>
+  </body>
+</html>

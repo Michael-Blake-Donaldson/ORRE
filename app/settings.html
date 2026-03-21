@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob: file: data:; connect-src 'self';" />
     <title>Memora Settings</title>
+    <link rel="icon" type="image/png" href="./assets/memora-logo.png" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -18,6 +19,7 @@
         <button class="nav-item" data-page="library">Library</button>
         <button class="nav-item nav-item--active" data-page="settings">Settings</button>
         <button class="nav-item" data-page="benchmarks">Benchmarks</button>
+        <button class="nav-item" data-action="logout">Sign Out</button>
       </aside>
 
       <main class="workspace">
@@ -92,6 +94,51 @@
               <li>Always-on mode is visible and explicit.</li>
               <li>Raw capture is available while local AI processing runs after save.</li>
             </ul>
+          </article>
+
+          <article class="panel panel--wide">
+            <h2>Account Security</h2>
+            <p class="status">Enable multi-factor authentication (TOTP) for stronger account protection.</p>
+
+            <div class="mfa-shell">
+              <div class="mfa-row">
+                <div>MFA Status: <span id="mfaStateLabel">Checking...</span></div>
+                <button id="mfaStartBtn" class="button button--mini" type="button">Set Up MFA</button>
+              </div>
+
+              <div id="mfaEnrollPanel" class="mfa-panel mfa-panel--hidden">
+                <div class="field-row">
+                  <label>Authenticator QR Code</label>
+                  <div id="mfaQrContainer" class="mfa-qr-shell">Start setup to generate your QR code.</div>
+                </div>
+
+                <div class="field-row">
+                  <label for="mfaCodeInput">Verification Code</label>
+                  <input id="mfaCodeInput" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="Enter code from authenticator app" />
+                </div>
+
+                <div class="button-row button-row--compact">
+                  <button id="mfaVerifyBtn" class="button button--mini" type="button">Verify & Enable</button>
+                  <button id="mfaCancelBtn" class="button button--mini" type="button">Cancel</button>
+                </div>
+              </div>
+
+              <div class="button-row button-row--compact">
+                <button id="mfaDisableBtn" class="button button--mini" type="button" disabled>Disable MFA</button>
+              </div>
+
+              <p id="mfaStatusText" class="status">MFA not configured yet.</p>
+
+              <div class="button-row button-row--compact">
+                <button id="revokeSessionsBtn" class="button button--mini" type="button" disabled>Sign Out All Devices</button>
+              </div>
+              <p id="revokeSessionsStatus" class="status">Global session revoke is available with cloud authentication.</p>
+
+              <div class="button-row button-row--compact">
+                <button id="reauthSecurityBtn" class="button button--mini" type="button">Re-authenticate With Password</button>
+              </div>
+              <p id="reauthSecurityStatus" class="status">Required for MFA and security actions when signed in with local passkey only.</p>
+            </div>
           </article>
 
           <article class="panel panel--wide">

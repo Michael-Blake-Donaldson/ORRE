@@ -5,7 +5,7 @@ const deleteCategoryBtn = document.getElementById("libraryDeleteCategoryBtn");
 const refreshBtn = document.getElementById("libraryRefreshBtn");
 const statusText = document.getElementById("libraryStatus");
 const sessionGrid = document.getElementById("librarySessionGrid");
-const navButtons = Array.from(document.querySelectorAll(".nav-item[data-page]"));
+const navButtons = Array.from(document.querySelectorAll(".nav-item[data-page], .nav-item[data-action]"));
 const backToTopBtn = document.getElementById("backToTopBtn");
 
 function parseTimestampToSeconds(timestamp) {
@@ -55,6 +55,21 @@ function getMemoraApi() {
 
   statusText.textContent = "Desktop bridge unavailable. Restart app with npm run dev.";
   return null;
+}
+
+async function ensureAuthenticated() {
+  const api = getMemoraApi();
+  if (!api) {
+    return false;
+  }
+
+  const user = await api.getCurrentUser();
+  if (!user) {
+    window.location.href = "./auth.html";
+    return false;
+  }
+
+  return true;
 }
 
 function renderCategoryFilter(categories, selectedCategoryId) {
@@ -391,6 +406,18 @@ refreshBtn?.addEventListener("click", async () => {
 
 navButtons.forEach((button) => {
   button.addEventListener("click", () => {
+    const action = button.getAttribute("data-action");
+    if (action === "logout") {
+      const api = getMemoraApi();
+      if (api) {
+        api.logoutUser().catch(() => {
+          // Continue logout flow on navigation.
+        });
+      }
+      window.location.href = "./auth.html";
+      return;
+    }
+
     const page = button.getAttribute("data-page");
     if (!page) {
       return;
@@ -422,7 +449,18 @@ if (backToTopBtn) {
   syncVisibility();
 }
 
-loadLibrary().catch((error) => {
-  statusText.textContent = "Could not load library data.";
-  console.error(error);
-});
+ensureAuthenticated()
+  .then((authenticated) => {
+    if (!authenticated) {
+      return;
+    }
+
+    loadLibrary().catch((error) => {
+      statusText.textContent = "Could not load library data.";
+      console.error(error);
+    });
+  })
+  .catch((error) => {
+    statusText.textContent = "Could not verify account session.";
+    console.error(error);
+  });

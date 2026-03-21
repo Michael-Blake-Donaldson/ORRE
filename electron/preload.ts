@@ -92,7 +92,108 @@ type AppSettings = {
   benchmarkLimit: number;
 };
 
+type AuthUser = {
+  id: string;
+  email: string;
+  displayName: string;
+};
+
 const api = {
+  getCurrentUser: async () => {
+    return ipcRenderer.invoke("auth:getCurrentUser") as Promise<AuthUser | null>;
+  },
+  getAuthSessionContext: async () => {
+    return ipcRenderer.invoke("auth:getSessionContext") as Promise<
+      | {
+          ok: true;
+          cloudConfigured: boolean;
+          cloudSessionActive: boolean;
+          requiresPasswordReauth: boolean;
+        }
+      | { ok: false; reason: string }
+    >;
+  },
+  registerUser: async (payload: { email: string; password: string; displayName: string; acceptedLegal: boolean }) => {
+    return ipcRenderer.invoke("auth:register", payload) as Promise<
+      | { ok: true; user: AuthUser; requiresEmailVerification?: boolean }
+      | { ok: false; reason: string }
+    >;
+  },
+  loginUser: async (payload: { email: string; password: string }) => {
+    return ipcRenderer.invoke("auth:login", payload) as Promise<
+      | { ok: true; user: AuthUser }
+      | { ok: false; reason: "mfa-required"; factorId: string; challengeId: string }
+      | { ok: false; reason: string }
+    >;
+  },
+  passkeyBeginRegistration: async () => {
+    return ipcRenderer.invoke("auth:passkeyBeginRegistration") as Promise<
+      | { ok: true; options: Record<string, unknown> }
+      | { ok: false; reason: string }
+    >;
+  },
+  passkeyFinishRegistration: async (payload: { challenge: string; response: Record<string, unknown> }) => {
+    return ipcRenderer.invoke("auth:passkeyFinishRegistration", payload) as Promise<{ ok: true } | { ok: false; reason: string }>;
+  },
+  passkeyBeginLogin: async (payload: { email: string }) => {
+    return ipcRenderer.invoke("auth:passkeyBeginLogin", payload) as Promise<
+      | { ok: true; options: Record<string, unknown> }
+      | { ok: false; reason: string }
+    >;
+  },
+  passkeyFinishLogin: async (payload: { email: string; challenge: string; response: Record<string, unknown> }) => {
+    return ipcRenderer.invoke("auth:passkeyFinishLogin", payload) as Promise<
+      | { ok: true; user: AuthUser }
+      | { ok: false; reason: string }
+    >;
+  },
+  verifyMfaLogin: async (payload: { factorId: string; challengeId: string; code: string }) => {
+    return ipcRenderer.invoke("auth:verifyMfa", payload) as Promise<
+      | { ok: true; user: AuthUser }
+      | { ok: false; reason: string }
+    >;
+  },
+  resendVerificationEmail: async (payload: { email: string }) => {
+    return ipcRenderer.invoke("auth:resendVerification", payload) as Promise<{ ok: true } | { ok: false; reason: string }>;
+  },
+  requestPasswordReset: async (payload: { email: string }) => {
+    return ipcRenderer.invoke("auth:forgotPassword", payload) as Promise<
+      | { ok: true; message: string }
+      | { ok: false; reason: string }
+    >;
+  },
+  getMfaStatus: async () => {
+    return ipcRenderer.invoke("auth:getMfaStatus") as Promise<
+      | {
+          ok: true;
+          configured: boolean;
+          enabled: boolean;
+          factors: Array<{ id: string; status: string; friendlyName: string | null }>;
+        }
+      | { ok: false; reason: string }
+    >;
+  },
+  beginMfaEnrollment: async (payload: { displayName?: string }) => {
+    return ipcRenderer.invoke("auth:beginMfaEnrollment", payload) as Promise<
+      | { ok: true; factorId: string; qrCodeSvg: string | null; secret: string | null; uri: string | null }
+      | { ok: false; reason: string }
+    >;
+  },
+  verifyMfaEnrollment: async (payload: { factorId: string; code: string }) => {
+    return ipcRenderer.invoke("auth:verifyMfaEnrollment", payload) as Promise<{ ok: true } | { ok: false; reason: string }>;
+  },
+  disableMfa: async (payload: { factorId: string }) => {
+    return ipcRenderer.invoke("auth:disableMfa", payload) as Promise<{ ok: true } | { ok: false; reason: string }>;
+  },
+  logoutUser: async () => {
+    return ipcRenderer.invoke("auth:logout") as Promise<{ ok: true }>;
+  },
+  logoutAllDevices: async () => {
+    return ipcRenderer.invoke("auth:logoutAllDevices") as Promise<
+      | { ok: true }
+      | { ok: false; reason: string }
+    >;
+  },
   getRecordingState: async () => {
     return ipcRenderer.invoke("recording:getState") as Promise<{
       mode: RecordingMode;

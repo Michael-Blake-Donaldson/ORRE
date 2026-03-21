@@ -3,7 +3,7 @@ const benchmarkLimit = document.getElementById("benchmarkLimit");
 const runBenchmarkBtn = document.getElementById("runBenchmarkBtn");
 const benchmarkOutput = document.getElementById("benchmarkOutput");
 const benchmarkStatus = document.getElementById("benchmarkStatus");
-const navButtons = Array.from(document.querySelectorAll(".nav-item[data-page]"));
+const navButtons = Array.from(document.querySelectorAll(".nav-item[data-page], .nav-item[data-action]"));
 const backToTopBtn = document.getElementById("backToTopBtn");
 
 const DEFAULT_QUESTIONS = [
@@ -27,6 +27,21 @@ function setStatus(text) {
   if (benchmarkStatus) {
     benchmarkStatus.textContent = text;
   }
+}
+
+async function ensureAuthenticated() {
+  const api = getMemoraApi();
+  if (!api) {
+    return false;
+  }
+
+  const user = await api.getCurrentUser();
+  if (!user) {
+    window.location.href = "./auth.html";
+    return false;
+  }
+
+  return true;
 }
 
 function clamp(value, min, max) {
@@ -131,6 +146,18 @@ async function runBenchmark() {
 function setupNavigation() {
   navButtons.forEach((button) => {
     button.addEventListener("click", () => {
+      const action = button.getAttribute("data-action");
+      if (action === "logout") {
+        const api = getMemoraApi();
+        if (api) {
+          api.logoutUser().catch(() => {
+            // Continue logout flow on navigation.
+          });
+        }
+        window.location.href = "./auth.html";
+        return;
+      }
+
       const page = button.getAttribute("data-page");
       if (!page) {
         return;
@@ -173,7 +200,19 @@ runBenchmarkBtn?.addEventListener("click", async () => {
 
 setupNavigation();
 setupBackToTop();
-loadDefaults().catch((error) => {
-  setStatus("Could not load benchmark defaults.");
-  console.error(error);
-});
+
+ensureAuthenticated()
+  .then((authenticated) => {
+    if (!authenticated) {
+      return;
+    }
+
+    loadDefaults().catch((error) => {
+      setStatus("Could not load benchmark defaults.");
+      console.error(error);
+    });
+  })
+  .catch((error) => {
+    setStatus("Could not verify account session.");
+    console.error(error);
+  });

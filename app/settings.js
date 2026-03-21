@@ -8,12 +8,25 @@ const grantScreenBtn = document.getElementById("grantScreenBtn");
 const grantMicBtn = document.getElementById("grantMicBtn");
 const screenPermissionStatus = document.getElementById("screenPermissionStatus");
 const micPermissionStatus = document.getElementById("micPermissionStatus");
-const navButtons = Array.from(document.querySelectorAll(".nav-item[data-page]"));
+const navButtons = Array.from(document.querySelectorAll(".nav-item[data-page], .nav-item[data-action]"));
 const backToTopBtn = document.getElementById("backToTopBtn");
 const diagBridgeLoaded = document.getElementById("diagBridgeLoaded");
 const diagSourceCount = document.getElementById("diagSourceCount");
 const diagSelectedSource = document.getElementById("diagSelectedSource");
 const diagLastError = document.getElementById("diagLastError");
+const mfaStateLabel = document.getElementById("mfaStateLabel");
+const mfaStartBtn = document.getElementById("mfaStartBtn");
+const mfaDisableBtn = document.getElementById("mfaDisableBtn");
+const mfaEnrollPanel = document.getElementById("mfaEnrollPanel");
+const mfaQrContainer = document.getElementById("mfaQrContainer");
+const mfaCodeInput = document.getElementById("mfaCodeInput");
+const mfaVerifyBtn = document.getElementById("mfaVerifyBtn");
+const mfaCancelBtn = document.getElementById("mfaCancelBtn");
+const mfaStatusText = document.getElementById("mfaStatusText");
+const revokeSessionsBtn = document.getElementById("revokeSessionsBtn");
+const revokeSessionsStatus = document.getElementById("revokeSessionsStatus");
+const reauthSecurityBtn = document.getElementById("reauthSecurityBtn");
+const reauthSecurityStatus = document.getElementById("reauthSecurityStatus");
 
 const DEFAULT_SETTINGS = {
   defaultMode: "session",
@@ -32,6 +45,245 @@ const diagnostics = {
   selectedSource: "none",
   lastCaptureError: "none",
 };
+
+let currentUserEmail = "";
+
+const mfaState = {
+  configured: false,
+  enabled: false,
+  factors: [],
+  pendingFactorId: null,
+  requiresPasswordReauth: false,
+};
+
+function setMfaStatus(text) {
+  if (mfaStatusText) {
+    mfaStatusText.textContent = text;
+  }
+}
+
+function setRevokeSessionsStatus(text) {
+  if (revokeSessionsStatus) {
+    revokeSessionsStatus.textContent = text;
+  }
+}
+
+function setReauthSecurityStatus(text) {
+  if (reauthSecurityStatus) {
+    reauthSecurityStatus.textContent = text;
+  }
+}
+
+function renderMfaShell() {
+  if (mfaStateLabel) {
+    if (!mfaState.configured) {
+      mfaStateLabel.textContent = "Supabase auth not configured";
+    } else {
+      mfaStateLabel.textContent = mfaState.enabled ? "Enabled" : "Disabled";
+    }
+  }
+
+  if (mfaStartBtn) {
+    mfaStartBtn.disabled = !mfaState.configured || mfaState.enabled || mfaState.requiresPasswordReauth;
+  }
+
+  if (mfaDisableBtn) {
+    mfaDisableBtn.disabled = !mfaState.enabled || mfaState.requiresPasswordReauth;
+  }
+
+  if (revokeSessionsBtn) {
+    revokeSessionsBtn.disabled = !mfaState.configured || mfaState.requiresPasswordReauth;
+  }
+}
+
+function resetMfaEnrollmentUI() {
+  mfaState.pendingFactorId = null;
+  mfaEnrollPanel?.classList.add("mfa-panel--hidden");
+  if (mfaCodeInput) {
+    mfaCodeInput.value = "";
+  }
+  if (mfaQrContainer) {
+    mfaQrContainer.textContent = "Start setup to generate your QR code.";
+  }
+}
+
+function renderMfaQr(value) {
+  if (!mfaQrContainer) {
+    return;
+  }
+
+  if (!value) {
+    mfaQrContainer.textContent = "QR code unavailable. Use your authenticator app with the manual setup key.";
+    return;
+  }
+
+  if (value.includes("<svg")) {
+    mfaQrContainer.innerHTML = value;
+    return;
+  }
+
+  if (value.startsWith("data:image")) {
+    mfaQrContainer.innerHTML = `<img src="${value}" alt="MFA QR code" class="mfa-qr-image" />`;
+    return;
+  }
+
+  mfaQrContainer.textContent = value;
+}
+
+async function loadMfaStatus() {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
+  const sessionContext = await api.getAuthSessionContext();
+  if (!sessionContext.ok) {
+    setMfaStatus(sessionContext.reason || "Could not load account session context.");
+    return;
+  }
+
+  mfaState.configured = sessionContext.cloudConfigured;
+  mfaState.requiresPasswordReauth = sessionContext.requiresPasswordReauth;
+
+  if (mfaState.requiresPasswordReauth) {
+    mfaState.enabled = false;
+    mfaState.factors = [];
+    renderMfaShell();
+    setMfaStatus("Password re-authentication required to manage MFA.");
+    setRevokeSessionsStatus("Re-authenticate to revoke active cloud sessions.");
+    setReauthSecurityStatus("You are signed in for app access, but cloud security actions need a fresh password sign-in.");
+    return;
+  }
+
+  const response = await api.getMfaStatus();
+  if (!response.ok) {
+    setMfaStatus(response.reason || "Could not load MFA status.");
+    return;
+  }
+
+  mfaState.configured = response.configured;
+  mfaState.enabled = response.enabled;
+  mfaState.factors = response.factors || [];
+
+  renderMfaShell();
+  if (!mfaState.configured) {
+    setMfaStatus("Supabase auth is not configured. Add SUPABASE_URL and key in .env to use MFA.");
+    setRevokeSessionsStatus("Global session revoke is available with cloud authentication.");
+    setReauthSecurityStatus("Cloud security re-auth is unavailable because cloud auth is not configured.");
+    return;
+  }
+
+  setMfaStatus(mfaState.enabled ? "MFA is enabled for your account." : "MFA is not enabled yet.");
+  setRevokeSessionsStatus("Use this if your account was accessed on a device you no longer trust.");
+  setReauthSecurityStatus("Cloud security session active.");
+}
+
+function startSecurityReauth() {
+  const emailHint = encodeURIComponent(currentUserEmail || "");
+  window.location.href = `./auth.html?reauth=1&mode=login&email=${emailHint}`;
+}
+
+async function revokeAllSessionsFlow() {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
+  const confirmed = window.confirm("Sign out all active devices and sessions for this account?");
+  if (!confirmed) {
+    return;
+  }
+
+  if (revokeSessionsBtn) {
+    revokeSessionsBtn.disabled = true;
+  }
+  setRevokeSessionsStatus("Revoking active sessions...");
+
+  const response = await api.logoutAllDevices();
+  if (!response.ok) {
+    setRevokeSessionsStatus(response.reason || "Could not revoke active sessions.");
+    renderMfaShell();
+    return;
+  }
+
+  setRevokeSessionsStatus("All sessions revoked. Redirecting to sign in...");
+  setTimeout(() => {
+    window.location.href = "./auth.html";
+  }, 350);
+}
+
+async function startMfaEnrollment() {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
+  const response = await api.beginMfaEnrollment({
+    displayName: "Memora Authenticator",
+  });
+
+  if (!response.ok) {
+    setMfaStatus(response.reason || "Could not start MFA setup.");
+    return;
+  }
+
+  mfaState.pendingFactorId = response.factorId;
+  mfaEnrollPanel?.classList.remove("mfa-panel--hidden");
+  renderMfaQr(response.qrCodeSvg || response.uri || response.secret || null);
+  setMfaStatus("Scan the QR code and enter your authenticator code to finish setup.");
+}
+
+async function verifyMfaEnrollmentFlow() {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
+  const factorId = mfaState.pendingFactorId;
+  const code = (mfaCodeInput?.value ?? "").trim();
+  if (!factorId) {
+    setMfaStatus("Start MFA setup first.");
+    return;
+  }
+
+  if (code.length < 6) {
+    setMfaStatus("Enter the code from your authenticator app.");
+    return;
+  }
+
+  const response = await api.verifyMfaEnrollment({ factorId, code });
+  if (!response.ok) {
+    setMfaStatus(response.reason || "MFA verification failed.");
+    return;
+  }
+
+  resetMfaEnrollmentUI();
+  await loadMfaStatus();
+  setMfaStatus("MFA enabled successfully.");
+}
+
+async function disableMfaFlow() {
+  const api = getMemoraApi();
+  if (!api) {
+    return;
+  }
+
+  const verifiedFactor = (mfaState.factors || []).find((factor) => factor.status === "verified") || null;
+  if (!verifiedFactor) {
+    setMfaStatus("No verified MFA factor found.");
+    return;
+  }
+
+  const response = await api.disableMfa({ factorId: verifiedFactor.id });
+  if (!response.ok) {
+    setMfaStatus(response.reason || "Could not disable MFA.");
+    return;
+  }
+
+  resetMfaEnrollmentUI();
+  await loadMfaStatus();
+  setMfaStatus("MFA disabled.");
+}
 
 function refreshDiagnosticsUI() {
   if (diagBridgeLoaded) {
@@ -252,6 +504,18 @@ async function resetSettingsToDefaults() {
 function setupNavigation() {
   navButtons.forEach((button) => {
     button.addEventListener("click", () => {
+      const action = button.getAttribute("data-action");
+      if (action === "logout") {
+        const api = getMemoraApi();
+        if (api) {
+          api.logoutUser().catch(() => {
+            // Continue to auth page even if logout IPC fails.
+          });
+        }
+        window.location.href = "./auth.html";
+        return;
+      }
+
       const page = button.getAttribute("data-page");
       if (!page) {
         return;
@@ -270,6 +534,23 @@ function setupNavigation() {
       }
     });
   });
+}
+
+async function ensureAuthenticated() {
+  const api = getMemoraApi();
+  if (!api) {
+    return false;
+  }
+
+  const user = await api.getCurrentUser();
+  if (!user) {
+    window.location.href = "./auth.html";
+    return false;
+  }
+
+  currentUserEmail = user.email || "";
+
+  return true;
 }
 
 function setupBackToTop() {
@@ -324,16 +605,58 @@ grantMicBtn?.addEventListener("click", async () => {
   setStatus("Microphone access not granted. Screen recording still works without mic.");
 });
 
+mfaStartBtn?.addEventListener("click", async () => {
+  await startMfaEnrollment();
+});
+
+mfaVerifyBtn?.addEventListener("click", async () => {
+  await verifyMfaEnrollmentFlow();
+});
+
+mfaDisableBtn?.addEventListener("click", async () => {
+  await disableMfaFlow();
+});
+
+mfaCancelBtn?.addEventListener("click", () => {
+  resetMfaEnrollmentUI();
+  setMfaStatus("MFA setup canceled.");
+});
+
+revokeSessionsBtn?.addEventListener("click", async () => {
+  await revokeAllSessionsFlow();
+});
+
+reauthSecurityBtn?.addEventListener("click", () => {
+  startSecurityReauth();
+});
+
 setupNavigation();
 setupBackToTop();
 refreshPermissionUI();
-loadSettings().catch((error) => {
-  setStatus("Could not load settings.");
-  console.error(error);
-});
 
-refreshDiagnostics().catch((error) => {
-  diagnostics.lastCaptureError = error?.name ?? "diagnostics-unavailable";
-  refreshDiagnosticsUI();
-  console.error(error);
-});
+ensureAuthenticated()
+  .then((authenticated) => {
+    if (!authenticated) {
+      return;
+    }
+
+    loadSettings().catch((error) => {
+      setStatus("Could not load settings.");
+      console.error(error);
+    });
+
+    loadMfaStatus().catch((error) => {
+      setMfaStatus("Could not load MFA status.");
+      console.error(error);
+    });
+
+    refreshDiagnostics().catch((error) => {
+      diagnostics.lastCaptureError = error?.name ?? "diagnostics-unavailable";
+      refreshDiagnosticsUI();
+      console.error(error);
+    });
+  })
+  .catch((error) => {
+    setStatus("Could not verify account session.");
+    console.error(error);
+  });
