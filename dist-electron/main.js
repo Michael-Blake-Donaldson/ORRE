@@ -153,18 +153,33 @@ async function canUseCloudData() {
     return canUse;
 }
 async function syncSessionToCloud(sessionId) {
-    if (!(await canUseCloudData())) {
+    const cloudReady = await canUseCloudData();
+    console.log("[SYNC_SESSION_CLOUD] sessionId:", sessionId, "cloudReady:", cloudReady);
+    if (!cloudReady) {
+        console.log("[SYNC_SESSION_CLOUD] cloud not ready, skipping");
         return;
     }
     const userId = getActiveUserId();
+    console.log("[SYNC_SESSION_CLOUD] userId:", userId);
     if (!userId) {
+        console.log("[SYNC_SESSION_CLOUD] no userId, skipping");
         return;
     }
-    const detail = store.getSessionDetail(userId, sessionId);
-    if (!detail.session) {
-        return;
+    try {
+        const detail = store.getSessionDetail(userId, sessionId);
+        console.log("[SYNC_SESSION_CLOUD] local detail loaded, hasSession:", !!detail.session);
+        if (!detail.session) {
+            console.log("[SYNC_SESSION_CLOUD] no session found locally");
+            return;
+        }
+        console.log("[SYNC_SESSION_CLOUD] syncing to cloud...");
+        await syncCloudSessionDetail(detail);
+        console.log("[SYNC_SESSION_CLOUD] sync complete");
     }
-    await syncCloudSessionDetail(detail);
+    catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        console.error("[SYNC_SESSION_CLOUD] error:", reason);
+    }
 }
 function getBillingPeriodKey(now = new Date()) {
     const year = now.getUTCFullYear();
@@ -1097,14 +1112,23 @@ ipcMain.handle("sessions:list", async () => {
     const cloudReady = await canUseCloudData();
     console.log("[SESSIONS:LIST] cloudReady:", cloudReady);
     if (cloudReady) {
-        console.log("[SESSIONS:LIST] using cloud");
-        const cloudRows = await listCloudSessions(20);
-        console.log("[SESSIONS:LIST] cloud returned:", cloudRows.length, "rows");
-        return cloudRows;
+        try {
+            console.log("[SESSIONS:LIST] using cloud");
+            const cloudRows = await listCloudSessions(20);
+            console.log("[SESSIONS:LIST] cloud returned:", cloudRows.length, "rows");
+            if (cloudRows.length > 0) {
+                return cloudRows;
+            }
+            console.log("[SESSIONS:LIST] cloud returned empty, falling back to local");
+        }
+        catch (error) {
+            const reason = error instanceof Error ? error.message : String(error);
+            console.error("[SESSIONS:LIST] cloud error:", reason, "falling back to local");
+        }
     }
     console.log("[SESSIONS:LIST] using local");
     const rows = store.listSessions(userId, 20);
-    console.log("[SESSIONS:LIST] local returned:", rows.length, "rows");
+    console.log("[SESSIONS:LIST] local returned:", rows.length, "rows", rows);
     return rows;
 });
 ipcMain.handle("sessions:listByCategory", async (_event, payload) => {
