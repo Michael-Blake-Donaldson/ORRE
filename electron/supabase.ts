@@ -47,17 +47,53 @@ type SupabaseMfaEnrollResult =
 
 let supabaseClient: SupabaseClient | null = null;
 
+function isPlaceholderValue(value: string) {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+
+  return (
+    normalized.includes("your-project-id") ||
+    normalized.includes("your-anon-key") ||
+    normalized.includes("placeholder")
+  );
+}
+
+function normalizeSupabaseErrorMessage(message: string) {
+  const normalized = message.trim().toLowerCase();
+  if (!normalized) {
+    return "Authentication failed.";
+  }
+
+  if (normalized.includes("fetch failed") || normalized.includes("network request failed")) {
+    return "Cannot reach Supabase. Check SUPABASE_URL and SUPABASE_ANON_KEY in your .env file.";
+  }
+
+  return message;
+}
+
 function getConfiguredUrl() {
-  return process.env.SUPABASE_URL?.trim() ?? "";
+  const configured = process.env.SUPABASE_URL?.trim() ?? "";
+  if (isPlaceholderValue(configured)) {
+    return "";
+  }
+
+  return configured;
 }
 
 function getConfiguredAnonKey() {
   const anon = process.env.SUPABASE_ANON_KEY?.trim() ?? "";
-  if (anon) {
+  if (anon && !isPlaceholderValue(anon)) {
     return anon;
   }
 
-  return process.env.SUPABASE_PUBLISHABLE_KEY?.trim() ?? "";
+  const publishable = process.env.SUPABASE_PUBLISHABLE_KEY?.trim() ?? "";
+  if (publishable && !isPlaceholderValue(publishable)) {
+    return publishable;
+  }
+
+  return "";
 }
 
 export function isSupabaseAuthConfigured() {
@@ -114,23 +150,32 @@ export async function registerWithSupabase(
     return { ok: false as const, reason: "Supabase is not configured." };
   }
 
-  const { data, error } = await client.auth.signUp({
-    email,
-    password,
-    options: {
-      data: {
-        display_name: displayName,
-        legal_acceptance: {
-          accepted_at: legalAcceptance.acceptedAt,
-          terms_version: legalAcceptance.termsVersion,
-          privacy_policy_version: legalAcceptance.privacyPolicyVersion,
+  let data: Awaited<ReturnType<typeof client.auth.signUp>>["data"];
+  let error: Awaited<ReturnType<typeof client.auth.signUp>>["error"];
+  try {
+    const response = await client.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          display_name: displayName,
+          legal_acceptance: {
+            accepted_at: legalAcceptance.acceptedAt,
+            terms_version: legalAcceptance.termsVersion,
+            privacy_policy_version: legalAcceptance.privacyPolicyVersion,
+          },
         },
       },
-    },
-  });
+    });
+    data = response.data;
+    error = response.error;
+  } catch (caughtError) {
+    const message = caughtError instanceof Error ? caughtError.message : "Authentication failed.";
+    return { ok: false as const, reason: normalizeSupabaseErrorMessage(message) };
+  }
 
   if (error) {
-    return { ok: false as const, reason: error.message };
+    return { ok: false as const, reason: normalizeSupabaseErrorMessage(error.message) };
   }
 
   if (!data.user) {
@@ -150,13 +195,22 @@ export async function loginWithSupabase(email: string, password: string): Promis
     return { ok: false as const, reason: "Supabase is not configured." };
   }
 
-  const { data, error } = await client.auth.signInWithPassword({
-    email,
-    password,
-  });
+  let data: Awaited<ReturnType<typeof client.auth.signInWithPassword>>["data"];
+  let error: Awaited<ReturnType<typeof client.auth.signInWithPassword>>["error"];
+  try {
+    const response = await client.auth.signInWithPassword({
+      email,
+      password,
+    });
+    data = response.data;
+    error = response.error;
+  } catch (caughtError) {
+    const message = caughtError instanceof Error ? caughtError.message : "Authentication failed.";
+    return { ok: false as const, reason: normalizeSupabaseErrorMessage(message) };
+  }
 
   if (error) {
-    return { ok: false as const, reason: error.message };
+    return { ok: false as const, reason: normalizeSupabaseErrorMessage(error.message) };
   }
 
   if (!data.user) {
