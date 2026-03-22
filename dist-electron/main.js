@@ -140,11 +140,17 @@ function syncShadowUser(authUser, options) {
     });
 }
 async function canUseCloudData() {
-    if (!isSupabaseAuthConfigured() || !activeAuthUser) {
+    const configured = isSupabaseAuthConfigured();
+    console.log("[CAN_USE_CLOUD] configured:", configured);
+    if (!configured || !activeAuthUser) {
+        console.log("[CAN_USE_CLOUD] not configured or no active user");
         return false;
     }
     const sessionState = await getSupabaseSessionState();
-    return sessionState.ok && sessionState.active && sessionState.userId === activeAuthUser.id;
+    console.log("[CAN_USE_CLOUD] sessionState:", { ok: sessionState.ok, active: sessionState.active, userId: sessionState.userId, activeAuthUser: activeAuthUser.id });
+    const canUse = sessionState.ok && sessionState.active && sessionState.userId === activeAuthUser.id;
+    console.log("[CAN_USE_CLOUD] result:", canUse);
+    return canUse;
 }
 async function syncSessionToCloud(sessionId) {
     if (!(await canUseCloudData())) {
@@ -1083,13 +1089,22 @@ ipcMain.handle("recording:save", async (_event, payload) => {
 });
 ipcMain.handle("sessions:list", async () => {
     const userId = getActiveUserId();
+    console.log("[SESSIONS:LIST] userId:", userId);
     if (!userId) {
+        console.log("[SESSIONS:LIST] no user, returning empty");
         return [];
     }
-    if (await canUseCloudData()) {
-        return listCloudSessions(20);
+    const cloudReady = await canUseCloudData();
+    console.log("[SESSIONS:LIST] cloudReady:", cloudReady);
+    if (cloudReady) {
+        console.log("[SESSIONS:LIST] using cloud");
+        const cloudRows = await listCloudSessions(20);
+        console.log("[SESSIONS:LIST] cloud returned:", cloudRows.length, "rows");
+        return cloudRows;
     }
+    console.log("[SESSIONS:LIST] using local");
     const rows = store.listSessions(userId, 20);
+    console.log("[SESSIONS:LIST] local returned:", rows.length, "rows");
     return rows;
 });
 ipcMain.handle("sessions:listByCategory", async (_event, payload) => {

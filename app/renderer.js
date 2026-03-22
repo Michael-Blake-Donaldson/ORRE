@@ -1009,14 +1009,23 @@ function renderSessions(rows) {
 async function refreshSessions() {
   const api = getMemoraApi();
   if (!api) {
+    console.log("[REFRESH_SESSIONS] NO_API");
     return;
   }
 
-  const rows = await api.listSessions();
-  renderSessions(rows);
+  try {
+    console.log("[REFRESH_SESSIONS] fetching list...");
+    const rows = await api.listSessions();
+    console.log("[REFRESH_SESSIONS] got rows:", rows.length, rows);
+    renderSessions(rows);
+    console.log("[REFRESH_SESSIONS] rendered");
 
-  if (!selectedSessionId && rows.length > 0) {
-    await selectSession(rows[0].id);
+    if (!selectedSessionId && rows.length > 0) {
+      console.log("[REFRESH_SESSIONS] auto-selecting first session:", rows[0].id);
+      await selectSession(rows[0].id);
+    }
+  } catch (error) {
+    console.error("[REFRESH_SESSIONS_ERROR]", error?.message || String(error));
   }
 }
 
