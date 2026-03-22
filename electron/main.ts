@@ -754,6 +754,33 @@ ipcMain.handle("auth:login", async (_event, payload: { email: string; password: 
         return { ok: false, reason: "Please verify your email before logging in." };
       }
 
+      // Backward-compatible fallback: allow existing local accounts to continue
+      // signing in when cloud auth is newly enabled or temporarily unavailable.
+      const localUser = store.getUserByEmail(email);
+      if (localUser) {
+        const localVerified = verifyPassword(password, localUser.password_hash, localUser.password_salt);
+        if (localVerified) {
+          activeUserId = localUser.id;
+          activeAuthUser = toAuthUser(localUser);
+          recordingMode = "idle";
+          recordingStartedAt = null;
+          activeSessionId = null;
+          store.setUserLastLoginAt(localUser.id, new Date().toISOString());
+
+          return {
+            ok: true,
+            user: toAuthUser(localUser),
+          };
+        }
+      }
+
+      if (typeof cloud.reason === "string" && cloud.reason.toLowerCase().includes("invalid login credentials")) {
+        return {
+          ok: false,
+          reason: "Invalid email or password. If you just signed up, verify your email first (check spam) then try again.",
+        };
+      }
+
       return { ok: false, reason: cloud.reason || "Invalid email or password." };
     }
 

@@ -665,8 +665,9 @@ loginForm?.addEventListener("submit", async (event) => {
         setResendVisibility(true);
       }
 
-      showFieldError(loginPassword, result.reason || "Login failed");
-      setStatus("");
+      const reason = result.reason || "Login failed";
+      showFieldError(loginPassword, reason);
+      setStatus(reason);
       return;
     }
 
