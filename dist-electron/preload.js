@@ -51,6 +51,15 @@ const api = {
     logoutAllDevices: async () => {
         return ipcRenderer.invoke("auth:logoutAllDevices");
     },
+    getBillingStatus: async () => {
+        return ipcRenderer.invoke("billing:getStatus");
+    },
+    startBillingCheckout: async () => {
+        return ipcRenderer.invoke("billing:startCheckout");
+    },
+    openBillingPortal: async () => {
+        return ipcRenderer.invoke("billing:openPortal");
+    },
     getRecordingState: async () => {
         return ipcRenderer.invoke("recording:getState");
     },

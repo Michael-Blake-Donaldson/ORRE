@@ -1,4 +1,11 @@
 import { getSupabaseClient, isSupabaseAuthConfigured } from "./supabase.js";
+const DEFAULT_CLOUD_SUBSCRIPTION = {
+    tier: "free",
+    status: "inactive",
+    stripeCustomerId: null,
+    stripeSubscriptionId: null,
+    currentPeriodEnd: null,
+};
 function mapSession(row) {
     const category = Array.isArray(row.category) ? (row.category[0] ?? null) : (row.category ?? null);
     return {
@@ -317,6 +324,68 @@ export async function updateCloudSettings(updates) {
         return { ok: true };
     }
     const response = await base.client.from("memora_user_settings").upsert(payload);
+    if (response.error) {
+        return { ok: false, reason: response.error.message };
+    }
+    return { ok: true };
+}
+export async function getCloudSubscriptionStatus() {
+    const base = await getClientAndUser();
+    if (!base.ok) {
+        return DEFAULT_CLOUD_SUBSCRIPTION;
+    }
+    const response = await base.client
+        .from("memora_subscriptions")
+        .select("tier, status, stripe_customer_id, stripe_subscription_id, current_period_end")
+        .maybeSingle();
+    if (response.error || !response.data) {
+        return DEFAULT_CLOUD_SUBSCRIPTION;
+    }
+    const tier = response.data.tier === "premium" ? "premium" : "free";
+    const status = ["active", "past_due", "canceled", "inactive"].includes(String(response.data.status))
+        ? response.data.status
+        : "inactive";
+    return {
+        tier,
+        status,
+        stripeCustomerId: response.data.stripe_customer_id ?? null,
+        stripeSubscriptionId: response.data.stripe_subscription_id ?? null,
+        currentPeriodEnd: response.data.current_period_end ?? null,
+    };
+}
+export async function getCloudAiUsage(periodKey) {
+    const base = await getClientAndUser();
+    if (!base.ok) {
+        return 0;
+    }
+    const response = await base.client
+        .from("memora_ai_usage")
+        .select("period_key,total_tokens")
+        .eq("period_key", periodKey)
+        .maybeSingle();
+    if (response.error || !response.data) {
+        return 0;
+    }
+    return Number(response.data.total_tokens ?? 0);
+}
+export async function incrementCloudAiUsage(periodKey, tokenDelta) {
+    const base = await getClientAndUser();
+    if (!base.ok) {
+        return { ok: false, reason: base.reason };
+    }
+    const safeDelta = Math.max(0, Math.floor(tokenDelta));
+    if (safeDelta <= 0) {
+        return { ok: true };
+    }
+    const currentTotal = await getCloudAiUsage(periodKey);
+    const response = await base.client.from("memora_ai_usage").upsert({
+        user_id: base.userId,
+        period_key: periodKey,
+        total_tokens: currentTotal + safeDelta,
+        updated_at: new Date().toISOString(),
+    }, {
+        onConflict: "user_id,period_key",
+    });
     if (response.error) {
         return { ok: false, reason: response.error.message };
     }
