@@ -1319,37 +1319,53 @@ ipcMain.handle("recording:stop", async () => {
 ipcMain.handle("recording:save", async (_event, payload: { sessionId: string; bytes: number[]; suggestedName: string }) => {
   const userId = getActiveUserId();
   if (!userId) {
+    console.log("[SAVE_ERROR] auth-required");
     return { ok: false, reason: "auth-required" };
   }
 
   if (!mainWindow) {
+    console.log("[SAVE_ERROR] window-unavailable");
     return { ok: false, reason: "window-unavailable" };
   }
 
-  const result = await dialog.showSaveDialog(mainWindow, {
-    title: "Save Memora Recording",
-    defaultPath: payload.suggestedName,
-    filters: [{ name: "WebM Video", extensions: ["webm"] }],
-  });
+  try {
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: "Save Memora Recording",
+      defaultPath: payload.suggestedName,
+      filters: [{ name: "WebM Video", extensions: ["webm"] }],
+    });
 
-  if (result.canceled || !result.filePath) {
-    return { ok: false, reason: "cancelled" };
+    if (result.canceled || !result.filePath) {
+      console.log("[SAVE_CANCELLED] user did not select a file");
+      return { ok: false, reason: "cancelled" };
+    }
+
+    console.log("[SAVE_FILE] writing to", result.filePath, "size:", payload.bytes.length);
+    await fs.writeFile(result.filePath, Buffer.from(payload.bytes));
+    console.log("[SAVE_FILE_OK]");
+
+    console.log("[SAVE_DB] marking session saved");
+    store.markSessionSaved({
+      id: payload.sessionId,
+      userId,
+      filePath: result.filePath,
+    });
+    console.log("[SAVE_DB_OK]");
+
+    console.log("[SAVE_CLOUD_SYNC] syncing to cloud");
+    await syncSessionToCloud(payload.sessionId);
+    console.log("[SAVE_CLOUD_SYNC_OK]");
+
+    // Queue asynchronous extraction work so UI is responsive.
+    processingQueue.enqueue({ sessionId: payload.sessionId, filePath: result.filePath });
+
+    console.log("[SAVE_SUCCESS]", result.filePath);
+    return { ok: true, filePath: result.filePath };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error("[SAVE_EXCEPTION]", reason);
+    return { ok: false, reason: `Failed to save: ${reason}` };
   }
-
-  await fs.writeFile(result.filePath, Buffer.from(payload.bytes));
-
-  store.markSessionSaved({
-    id: payload.sessionId,
-    userId,
-    filePath: result.filePath,
-  });
-
-  await syncSessionToCloud(payload.sessionId);
-
-  // Queue asynchronous extraction work so UI is responsive.
-  processingQueue.enqueue({ sessionId: payload.sessionId, filePath: result.filePath });
-
-  return { ok: true, filePath: result.filePath };
 });
 
 ipcMain.handle("sessions:list", async () => {

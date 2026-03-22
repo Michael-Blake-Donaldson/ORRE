@@ -1511,6 +1511,7 @@ refreshSourcesBtn.addEventListener("click", async () => {
 async function stopRecordingFlow() {
   const api = getMemoraApi();
   if (!api) {
+    statusText.textContent = "NO_API_BRIDGE";
     return;
   }
 
@@ -1523,50 +1524,64 @@ async function stopRecordingFlow() {
   setRecordingSignal("pending", "Finalizing recording");
   statusText.textContent = "Finalizing recording...";
 
-  const finalizedBlob = await new Promise((resolve) => {
-    mediaRecorder.onstop = async () => {
-      const blob = new Blob(recordedChunks, { type: "video/webm" });
-      resolve(blob);
-    };
+  try {
+    const finalizedBlob = await new Promise((resolve) => {
+      mediaRecorder.onstop = async () => {
+        const blob = new Blob(recordedChunks, { type: "video/webm" });
+        resolve(blob);
+      };
 
-    mediaRecorder.stop();
-  });
+      mediaRecorder.stop();
+    });
 
-  mediaStream.getTracks().forEach((track) => track.stop());
-  mediaRecorder = null;
-  mediaStream = null;
+    mediaStream.getTracks().forEach((track) => track.stop());
+    mediaRecorder = null;
+    mediaStream = null;
 
-  const stopResponse = await api.stopRecording();
+    const stopResponse = await api.stopRecording();
+    console.log("[STOP_RESPONSE]", stopResponse);
 
-  if (!stopResponse.sessionId) {
+    if (!stopResponse.ok || !stopResponse.sessionId) {
+      setRecordingUI(false, "idle");
+      statusText.textContent = `Recording stopped, but no session ID was returned. (${stopResponse.reason || "unknown"})`;
+      console.log("[STOP_ERROR]", stopResponse);
+      await refreshSessions();
+      return;
+    }
+
+    const buffer = await finalizedBlob.arrayBuffer();
+    const bytes = Array.from(new Uint8Array(buffer));
+    console.log("[BLOB_SIZE]", bytes.length);
+
+    // For long recordings we will stream chunks to disk in a later phase.
+    const filename = makeSuggestedFilename(stopResponse.startedAt ?? stopResponse.stoppedAt);
+    console.log("[SAVE_REQUEST]", { sessionId: stopResponse.sessionId, filesize: bytes.length, filename });
+    const saveResponse = await api.saveRecording(
+      stopResponse.sessionId,
+      bytes,
+      filename,
+    );
+    console.log("[SAVE_RESPONSE]", saveResponse);
+
     setRecordingUI(false, "idle");
-    statusText.textContent = "Recording stopped, but no session ID was returned.";
-    await refreshSessions();
-    return;
-  }
 
-  const buffer = await finalizedBlob.arrayBuffer();
-  const bytes = Array.from(new Uint8Array(buffer));
+    if (saveResponse.ok) {
+      statusText.textContent = `Saved recording at ${new Date(stopResponse.stoppedAt).toLocaleTimeString()} to ${saveResponse.filePath}.`;
+      console.log("[SAVE_SUCCESS]");
+      await refreshSessions();
+      await selectSession(stopResponse.sessionId);
+      return;
+    }
 
-  // For long recordings we will stream chunks to disk in a later phase.
-  const saveResponse = await api.saveRecording(
-    stopResponse.sessionId,
-    bytes,
-    makeSuggestedFilename(stopResponse.startedAt ?? stopResponse.stoppedAt),
-  );
-
-  setRecordingUI(false, "idle");
-
-  if (saveResponse.ok) {
-    statusText.textContent = `Saved recording at ${new Date(stopResponse.stoppedAt).toLocaleTimeString()} to ${saveResponse.filePath}.`;
+    statusText.textContent = `Recording stopped. Save not completed: ${saveResponse.reason || "unknown error"}`;
+    console.log("[SAVE_FAILED]", saveResponse);
     await refreshSessions();
     await selectSession(stopResponse.sessionId);
-    return;
+  } catch (error) {
+    console.error("[STOP_FLOW_ERROR]", error);
+    setRecordingUI(false, "idle");
+    statusText.textContent = `Error stopping recording: ${error?.message || String(error)}`;
   }
-
-  statusText.textContent = "Recording stopped. Save cancelled.";
-  await refreshSessions();
-  await selectSession(stopResponse.sessionId);
 }
 
 stopBtn.addEventListener("click", async () => {
