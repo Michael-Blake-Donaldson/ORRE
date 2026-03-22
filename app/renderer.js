@@ -188,6 +188,21 @@ function setSettingsStatus(text) {
   }
 }
 
+let detailPollingInterval = null;
+
+function startDetailPolling() {
+  // Session detail polling - can be extended for auto-refresh of processing status
+  // Currently a no-op placeholder
+}
+
+function stopDetailPolling() {
+  // Clear any polling intervals
+  if (detailPollingInterval) {
+    clearInterval(detailPollingInterval);
+    detailPollingInterval = null;
+  }
+}
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
