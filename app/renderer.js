@@ -189,18 +189,49 @@ function setSettingsStatus(text) {
 }
 
 let detailPollingInterval = null;
+let detailPollingSessionId = null;
+let detailPollingInFlight = false;
 
 function startDetailPolling() {
-  // Session detail polling - can be extended for auto-refresh of processing status
-  // Currently a no-op placeholder
+  if (!selectedSessionId) {
+    return;
+  }
+
+  if (detailPollingInterval && detailPollingSessionId === selectedSessionId) {
+    return;
+  }
+
+  stopDetailPolling();
+  detailPollingSessionId = selectedSessionId;
+  detailPollingInterval = window.setInterval(async () => {
+    if (!selectedSessionId || selectedSessionId !== detailPollingSessionId) {
+      stopDetailPolling();
+      return;
+    }
+
+    if (detailPollingInFlight) {
+      return;
+    }
+
+    detailPollingInFlight = true;
+    try {
+      console.log("[DETAIL_POLL] refreshing detail for", selectedSessionId);
+      await refreshSelectedSessionDetail();
+    } catch (error) {
+      console.error("[DETAIL_POLL] failed", error);
+    } finally {
+      detailPollingInFlight = false;
+    }
+  }, 1250);
 }
 
 function stopDetailPolling() {
-  // Clear any polling intervals
   if (detailPollingInterval) {
     clearInterval(detailPollingInterval);
     detailPollingInterval = null;
   }
+  detailPollingSessionId = null;
+  detailPollingInFlight = false;
 }
 
 function clamp(value, min, max) {

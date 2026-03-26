@@ -11,7 +11,7 @@ import {
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
 } from "@simplewebauthn/server";
-import { createDb, type MemoraStore, type SessionRow } from "./db.js";
+import { createDb, type MemoraStore, type SearchResultRow, type SessionDetail, type SessionRow } from "./db.js";
 import { ProcessingQueue } from "./processing.js";
 import { buildAskMemoraAnswer } from "./qa.js";
 import { buildSessionSummary } from "./summary.js";
@@ -264,12 +264,84 @@ async function syncSessionToCloud(sessionId: string) {
     }
 
     console.log("[SYNC_SESSION_CLOUD] syncing to cloud...");
-    await syncCloudSessionDetail(detail);
+    const result = await syncCloudSessionDetail(detail);
+    if (!result.ok) {
+      console.error("[SYNC_SESSION_CLOUD] sync failed:", result.reason);
+      return;
+    }
     console.log("[SYNC_SESSION_CLOUD] sync complete");
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     console.error("[SYNC_SESSION_CLOUD] error:", reason);
   }
+}
+
+function hasUsableLocalSessionDetail(detail: SessionDetail) {
+  if (!detail.session) {
+    return false;
+  }
+
+  return (
+    detail.jobs.length > 0 ||
+    detail.chunks.length > 0 ||
+    Boolean(detail.health?.queued_job_count) ||
+    Boolean(detail.health?.running_job_count) ||
+    Boolean(detail.health?.completed_job_count) ||
+    Boolean(detail.session.file_path)
+  );
+}
+
+async function getPreferredSessionDetail(userId: string, sessionId: string): Promise<SessionDetail> {
+  const localDetail = store.getSessionDetail(userId, sessionId);
+  const localUsable = hasUsableLocalSessionDetail(localDetail);
+  if (localUsable) {
+    console.log("[SESSION_DETAIL] using local detail", {
+      sessionId,
+      jobs: localDetail.jobs.length,
+      chunks: localDetail.chunks.length,
+    });
+    return localDetail;
+  }
+
+  const cloudReady = await canUseCloudData();
+  if (!cloudReady) {
+    console.log("[SESSION_DETAIL] cloud unavailable, using local fallback", {
+      sessionId,
+      hasSession: Boolean(localDetail.session),
+    });
+    return localDetail;
+  }
+
+  const cloudDetail = await getCloudSessionDetail(sessionId);
+  if (cloudDetail?.session) {
+    console.log("[SESSION_DETAIL] using cloud detail", {
+      sessionId,
+      jobs: cloudDetail.jobs.length,
+      chunks: cloudDetail.chunks.length,
+    });
+    return cloudDetail;
+  }
+
+  console.log("[SESSION_DETAIL] cloud returned empty, using local fallback", {
+    sessionId,
+    hasSession: Boolean(localDetail.session),
+  });
+  return localDetail;
+}
+
+function mergeSearchRows(...groups: SearchResultRow[][]) {
+  const merged = new Map<string, SearchResultRow>();
+
+  for (const group of groups) {
+    for (const row of group) {
+      const existing = merged.get(row.chunk_id);
+      if (!existing || row.rank < existing.rank) {
+        merged.set(row.chunk_id, row);
+      }
+    }
+  }
+
+  return [...merged.values()];
 }
 
 function getBillingPeriodKey(now = new Date()) {
@@ -1444,18 +1516,7 @@ ipcMain.handle("sessions:getDetail", async (_event, sessionId: string) => {
     };
   }
 
-  if (await canUseCloudData()) {
-    return (
-      (await getCloudSessionDetail(sessionId)) ?? {
-        session: null,
-        jobs: [],
-        chunks: [],
-        health: null,
-      }
-    );
-  }
-
-  return store.getSessionDetail(userId, sessionId);
+  return getPreferredSessionDetail(userId, sessionId);
 });
 
 ipcMain.handle("processing:rerun", async (_event, sessionId: string) => {
@@ -1680,11 +1741,14 @@ ipcMain.handle("search:content", async (_event, payload: { query: string; limit?
     throw new Error(premium.reason);
   }
 
+  const localRows = store.searchExtractedContent(userId, payload.query, payload.limit ?? 25);
+
   if (await canUseCloudData()) {
-    return searchCloudExtractedContent(payload.query, payload.limit ?? 25);
+    const cloudRows = await searchCloudExtractedContent(payload.query, payload.limit ?? 25);
+    return mergeSearchRows(localRows, cloudRows).slice(0, payload.limit ?? 25);
   }
 
-  return store.searchExtractedContent(userId, payload.query, payload.limit ?? 25);
+  return localRows;
 });
 
 ipcMain.handle("ask:query", async (_event, payload: { question: string; limit?: number }) => {
@@ -1698,19 +1762,19 @@ ipcMain.handle("ask:query", async (_event, payload: { question: string; limit?: 
     throw new Error(premium.reason);
   }
 
+  const localPrimaryRows = store.searchExtractedContent(userId, payload.question, payload.limit ?? 80);
+  const localTranscriptRows = store.listRecentExtractedRows(userId, 220, "transcript");
+  const localOcrRows = store.listRecentExtractedRows(userId, 220, "ocr");
+
   if (await canUseCloudData()) {
     const primaryRows = await searchCloudExtractedContent(payload.question, payload.limit ?? 80);
     const transcriptRows = await listRecentCloudExtractedRows(220, "transcript");
     const ocrRows = await listRecentCloudExtractedRows(220, "ocr");
 
-    const mergedMap = new Map<string, (typeof primaryRows)[number]>();
-    for (const row of [...primaryRows, ...transcriptRows, ...ocrRows]) {
-      if (!mergedMap.has(row.chunk_id)) {
-        mergedMap.set(row.chunk_id, row);
-      }
-    }
-
-    const fallbackResult = buildAskMemoraAnswer(payload.question, [...mergedMap.values()]);
+    const fallbackResult = buildAskMemoraAnswer(
+      payload.question,
+      mergeSearchRows(localPrimaryRows, localTranscriptRows, localOcrRows, primaryRows, transcriptRows, ocrRows),
+    );
 
     if (!isOpenAiConfigured()) {
       return fallbackResult;
@@ -1738,19 +1802,10 @@ ipcMain.handle("ask:query", async (_event, payload: { question: string; limit?: 
     }
   }
 
-  const primaryRows = store.searchExtractedContent(userId, payload.question, payload.limit ?? 80);
-  const transcriptRows = store.listRecentExtractedRows(userId, 220, "transcript");
-  const ocrRows = store.listRecentExtractedRows(userId, 220, "ocr");
-
-  const mergedMap = new Map<string, (typeof primaryRows)[number]>();
-  for (const row of [...primaryRows, ...transcriptRows, ...ocrRows]) {
-    if (!mergedMap.has(row.chunk_id)) {
-      mergedMap.set(row.chunk_id, row);
-    }
-  }
-
-  const merged = [...mergedMap.values()];
-  const fallbackResult = buildAskMemoraAnswer(payload.question, merged);
+  const fallbackResult = buildAskMemoraAnswer(
+    payload.question,
+    mergeSearchRows(localPrimaryRows, localTranscriptRows, localOcrRows),
+  );
 
   if (!isOpenAiConfigured()) {
     return fallbackResult;
@@ -1789,31 +1844,7 @@ ipcMain.handle("sessions:generateSummary", async (_event, sessionId: string) => 
     throw new Error(premium.reason);
   }
 
-  if (await canUseCloudData()) {
-    const detail = await getCloudSessionDetail(sessionId);
-    const chunks = detail?.chunks ?? [];
-    const fallback = buildSessionSummary(chunks);
-
-    if (!isOpenAiConfigured() || chunks.length === 0) {
-      return fallback;
-    }
-
-    const estimatedTokens = estimateTokensFromText(chunks.map((chunk) => chunk.content).join("\n")) + 340;
-    const budget = await enforceAiTokenBudget(estimatedTokens);
-    if (!budget.ok) {
-      throw new Error(budget.reason);
-    }
-
-    try {
-      const aiSummary = await generateAiSessionSummary(chunks, 650);
-      await recordAiUsageTokens(aiSummary.usageTokens);
-      return aiSummary.summary;
-    } catch {
-      return fallback;
-    }
-  }
-
-  const detail = store.getSessionDetail(userId, sessionId);
+  const detail = await getPreferredSessionDetail(userId, sessionId);
   const fallback = buildSessionSummary(detail.chunks);
 
   if (!isOpenAiConfigured() || detail.chunks.length === 0) {

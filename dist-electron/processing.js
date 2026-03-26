@@ -13,8 +13,10 @@ export class ProcessingQueue {
     }
     enqueue(task) {
         if (this.activeSessions.has(task.sessionId) || this.queue.some((item) => item.sessionId === task.sessionId)) {
+            console.log("[PROCESSING] skip enqueue; already active", task.sessionId);
             return false;
         }
+        console.log("[PROCESSING] enqueue", task.sessionId, task.filePath);
         this.store.queueProcessingJobs(task.sessionId);
         void this.onSessionUpdated?.(task.sessionId);
         this.queue.push(task);
@@ -43,6 +45,7 @@ export class ProcessingQueue {
         this.isRunning = false;
     }
     async runPipeline(task) {
+        console.log("[PROCESSING] pipeline start", task.sessionId);
         let latestOcrChunks = [];
         await this.runSingleJob(task.sessionId, "ocr", async () => {
             let framePaths = [];
@@ -91,8 +94,10 @@ export class ProcessingQueue {
             this.store.replaceExtractedChunks(task.sessionId, "transcript", combinedTranscriptChunks);
             void this.onSessionUpdated?.(task.sessionId);
         });
+        console.log("[PROCESSING] pipeline complete", task.sessionId);
     }
     async runSingleJob(sessionId, jobType, callback) {
+        console.log("[PROCESSING] job start", sessionId, jobType);
         this.store.updateProcessingJob({
             sessionId,
             jobType,
@@ -109,9 +114,11 @@ export class ProcessingQueue {
                 status: "completed",
                 finishedAt: new Date().toISOString(),
             });
+            console.log("[PROCESSING] job complete", sessionId, jobType);
             void this.onSessionUpdated?.(sessionId);
         }
         catch (error) {
+            console.error("[PROCESSING] job failed", sessionId, jobType, error);
             this.store.updateProcessingJob({
                 sessionId,
                 jobType,
