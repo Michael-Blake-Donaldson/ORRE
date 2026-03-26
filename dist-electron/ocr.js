@@ -6,6 +6,49 @@ import { spawn } from "node:child_process";
 import { createWorker } from "tesseract.js";
 const MAX_FRAMES = 18;
 const UPSCALED_FRAME_INTERVAL_SECONDS = 2;
+const MIN_CONFIDENCE_THRESHOLD = 0.45;
+const MIN_CONTENT_LENGTH = 8;
+const MAX_CONTENT_LENGTH = 180;
+// Common UI patterns, metadata, and navigation words that should be filtered out
+const METADATA_PATTERNS = [
+    /^(sign in|log in|sign up|register|create account|forgot password|remember me)$/i,
+    /^(search|search\.\.\.|\/search|find)$/i,
+    /^(home|about|contact|help|support|faq|terms|privacy|cookies)$/i,
+    /^(next|previous|back|forward|skip|continue|cancel|close|dismiss)$/i,
+    /^(1|2|3|4|5|6|7|8|9|10)$/,
+    /^(follow|like|share|subscribe|unsubscribe|download|save)$/i,
+    /^(loading\.\.\.|please wait|processing|error|warning|success)$/i,
+    /^(click here|click to|tap to|press|enter)$/i,
+    /^(results|more results|view all|show more|load more|no results)$/i,
+    /^(\d+:\d+|\d+ comments|\d+ likes|\d+ shares|posted)$/i,
+    /^([a-z]{1,2})$/,
+    /^(ads? space|advertisement|sponsored|promoted)$/i,
+    /^(www\.|https?:|\.com|\.org|\.net|\.[a-z]{2,})$/i,
+    /^(edit|delete|update|settings|preferences)$/i,
+    /^(language|english|theme|dark|light|mode)$/i,
+    /^(menu|navbar|sidebar|footer|header)$/i,
+];
+function isLikelyMetadata(text) {
+    const normalized = text.replace(/\s+/g, " ").trim();
+    return METADATA_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+function isHighQualityContent(content, confidence) {
+    if (confidence < MIN_CONFIDENCE_THRESHOLD) {
+        return false;
+    }
+    if (content.length < MIN_CONTENT_LENGTH || content.length > MAX_CONTENT_LENGTH) {
+        return false;
+    }
+    if (isLikelyMetadata(content)) {
+        return false;
+    }
+    // Filter out mostly symbols or numbers
+    const alphaCount = (content.match(/[a-z]/gi) ?? []).length;
+    if (alphaCount < Math.max(4, Math.floor(content.length * 0.3))) {
+        return false;
+    }
+    return true;
+}
 const ffmpegPath = ffmpegPathImport;
 function runFfmpeg(args) {
     return new Promise((resolve, reject) => {
@@ -58,12 +101,13 @@ export async function runOcrOnFrames(framePaths) {
             if (lines.length > 0) {
                 for (const line of lines) {
                     const text = String(line.text ?? "").replace(/\s+/g, " ").trim();
-                    if (text.length < 3 || text.length > 80) {
+                    const lineConfidence = Math.max(0, Math.min(1, Number(line.confidence ?? result.data.confidence ?? 50) / 100));
+                    if (!isHighQualityContent(text, lineConfidence)) {
                         continue;
                     }
                     chunks.push({
                         content: text,
-                        confidence: Math.max(0, Math.min(1, Number(line.confidence ?? result.data.confidence ?? 50) / 100)),
+                        confidence: lineConfidence,
                     });
                 }
                 continue;
@@ -73,12 +117,13 @@ export async function runOcrOnFrames(framePaths) {
                 continue;
             }
             const normalizedText = text.replace(/\s+/g, " ").trim();
-            if (normalizedText.length < 8) {
+            const confidence = Math.max(0, Math.min(1, result.data.confidence / 100));
+            if (!isHighQualityContent(normalizedText, confidence)) {
                 continue;
             }
             chunks.push({
                 content: normalizedText,
-                confidence: Math.max(0, Math.min(1, result.data.confidence / 100)),
+                confidence,
             });
         }
         // Deduplicate near-identical chunks from adjacent frames.
